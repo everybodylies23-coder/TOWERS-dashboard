@@ -99,7 +99,7 @@
         <section class="p-6 glass rounded-2xl space-y-4">
             <div class="flex items-center gap-2">
                 <span class="p-1.5 bg-cyan-500/10 text-cyan-400 rounded-lg text-sm">🎯</span>
-                <h2 class="text-xl font-bold">次回（明日）のAI推奨台</h2>
+                <h2 class="text-xl font-bold" id="next-event-title">次回イベント推奨台</h2>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -299,13 +299,27 @@
                 document.getElementById('ai-summary-text').innerHTML = '<p class="text-slate-500">この日のAI営業総括データはありません。</p>';
             }
 
-            // 3. Load Predictions for the next day (Segmented Juggler vs Others & Deduplicated!)
-            const d = new Date(targetDate);
-            d.setDate(d.getDate() + 1);
-            const tomorrowStr = d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
-            
+            // 3. Load Predictions for the next event day (Segmented Juggler vs Others & Deduplicated!)
             const dedupedPredictions = deduplicatePredictions(rawPredictions);
-            const filteredPredictions = dedupedPredictions.filter(p => p.date === tomorrowStr);
+            
+            // Find the next available prediction date after targetDate
+            const predictionDates = [...new Set(dedupedPredictions.map(p => p.date))].sort();
+            let nextEventDate = predictionDates.find(dStr => dStr > targetDate);
+            
+            // Fallback: If no future date is found, take the absolute latest prediction date in the array
+            if (!nextEventDate && predictionDates.length > 0) {
+                nextEventDate = predictionDates[predictionDates.length - 1];
+            }
+            
+            // Update title dynamically to show the target event date
+            const nextEventTitle = document.getElementById('next-event-title');
+            if (nextEventTitle && nextEventDate) {
+                nextEventTitle.textContent = `次回（${nextEventDate}）のAI推奨狙い目台`;
+            } else if (nextEventTitle) {
+                nextEventTitle.textContent = '次回イベント推奨台';
+            }
+            
+            const filteredPredictions = nextEventDate ? dedupedPredictions.filter(p => p.date === nextEventDate) : [];
             
             const predJugglerBody = document.getElementById('pred-juggler-body');
             const predOthersBody = document.getElementById('pred-others-body');

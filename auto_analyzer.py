@@ -1232,17 +1232,17 @@ def generate_html_dashboard(excel_path, store_name):
             let nextEventDate = predictionDates.find(dStr => dStr > targetDate);
             
             // Fallback: If no future date is found, take the absolute latest prediction date in the array
-            if (!nextEventDate && predictionDates.length > 0) {
+            if (!nextEventDate && predictionDates.length > 0) {{
                 nextEventDate = predictionDates[predictionDates.length - 1];
-            }
+            }}
             
             // Update title dynamically to show the target event date
             const nextEventTitle = document.getElementById('next-event-title');
-            if (nextEventTitle && nextEventDate) {
-                nextEventTitle.textContent = `次回（${nextEventDate}）のAI推奨狙い目台`;
-            } else if (nextEventTitle) {
+            if (nextEventTitle && nextEventDate) {{
+                nextEventTitle.textContent = `次回（${{nextEventDate}}）のAI推奨狙い目台`;
+            }} else if (nextEventTitle) {{
                 nextEventTitle.textContent = '次回イベント推奨台';
-            }
+            }}
             
             const filteredPredictions = nextEventDate ? dedupedPredictions.filter(p => p.date === nextEventDate) : [];
             
