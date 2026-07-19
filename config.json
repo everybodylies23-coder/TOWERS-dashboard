@@ -1,0 +1,14 @@
+{
+  "GEMINI_API_KEY": "AQ.Ab8RN6I2vmTFRi0_SJrnFJYz4rkFT6TqR6ZDu5MzsscQfEQFMg",
+  "STORES": {
+    "トワーズ大和深見": {
+      "excel_file": "トワーズ大和深見_データ.xlsx"
+    },
+    "B店": {
+      "excel_file": "B店_データ.xlsx"
+    },
+    "C店": {
+      "excel_file": "C店_データ.xlsx"
+    }
+  }
+}
