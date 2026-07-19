@@ -857,7 +857,7 @@ def generate_html_dashboard(excel_path, store_name):
                 real_max = r
                 break
         
-        start_r = max(2, real_max - 1500)
+        start_r = max(2, real_max - 15000)
         for r in range(start_r, real_max + 1):
             dt_val = ws.cell(r, 1).value
             dt_str = normalize_date_string(dt_val)
