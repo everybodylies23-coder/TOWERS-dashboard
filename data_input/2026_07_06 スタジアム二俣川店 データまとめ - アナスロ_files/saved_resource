@@ -1,43 +1,0 @@
-
-var ftGUID_8149134="67181BA99F7BB8";
-var ftConfID_8149134="0";
-var ftParams_8149134="ft_custom=JnwT1yd5HM4PKwDlU0U5vDttP8sneI-F-ZQ=&ftOBA=1&ft_domain=ana-slo.com&ft_ifb=1&ft_agentEnv=0&ft_referrer=https%3A%2F%2Fana-slo.com%2F&gdpr=0&ftClick=https://adclick.g.doubleclick.net/aclk?sa=L&ai=Cc_szY9BXavLQD5yOjeYPieaLwQKI76j0XN69t5avAcCNtwEQASDSrfuEAWCJg8iE-BPIAQmoAwHIAwKqBNMCT9DTo31qvT5KQ9zcmo5k4aDZKqruk0eg_a3UzeexFzTtPldvEMaGN0Jc0pcZW6MtqvnCxbvtccc0wIfZkBa5jrZuXWdR9HbM4dqTskeFqTXuuKoFxaHkmOiGlhk7jaETnyy-Zb6ah4qQPBkLFnu5nPgwGS_vDdTvd5DHN1E5z7jHSb9FGDbbUWaxh7JevWvUgUwTWyB3Bhm4N6YSd-PpP6PTF_RCHQ7_JHi0otkKnQL3VvbbJOnEvSTH6PMWD1lGG7lAinKgt8VNrs1AjlUuUuS5m5pN-8xEJlCfwPaGb-y44oJxs0VcHMHIn5PzzRQm_3rtdhGq-itvPXKcd2zcLtfwJ0_33QVJg9jhvwxH_1u6CAkzkdqrIjk3pDbZv-J8q356kYkHpT69EYr0zHMR3SYyR03yAn0Db2f6y7Mk3sZc_YhpxWNHPJkERorJsI_V_62ggAbWooi797_YlwKgBiGIBwGQBwKoB5PYsQKoB5TYsQKoB5XYsQKoB6a-G6gHltgbqAeqm7ECqAf_nrECqAffn7ECqAetvrECqAe_07EC2AcA0ggyEAIyCICAgICAgIAIOhSf0ICAgIAEgMCAgICgqIACqIGAEEi9_cE6WIH1-fum1ZUDYAD6CwIIAYAMAaoNAkpQ6g0TCLiT-vum1ZUDFRxHwwYdCfMiKIgOCdAVAYAXAbIXEBgMKgo3MDE1NjgxNTk5UAGqGBcJvnSTGAbO-EASCjcwMTU2ODE1OTkYAQ&num=1&cid=CAQSkwIAEQoqgbu6be-xcZJ01mrk16oIzUpNNx_13Sy1hfhY8h6yT9B3xeSLL21EcDJ93VbwHf5l_T7GxHP8D6W8pHeFbqSXft2crNAuy7F_IYtdKKqglUJxy6qmGAv9xFvfoP_QNNXwPXPopUSqsljdJTrRSXUfSxqsFFivhmbQD0O8QPIP1waglAt_G4tqah8iIq_8W6KJf3zuP4Z7ZrKe_K-dQo2kIdeZsBf4fxajTNeldaV-h-Kkq0gLP-mBDJwZOjQ39PBh4F9XRgeq-_-bZ4mnWnj3BE20aIJ2YDhcJfk32bNLt_cBErL9QMLuuNBKJSrooPJh9NXXnFjhLdHcpvTtRB-QDOQco5WpDvY-AooA5uyfeRgBIAg&sig=AOD64_1H7LYqV9FphWw6koliIPHJTmDEGA&client=ca-pub-8934993653059501&adurl=https://exch.quantserve.com/r?&a=p-1RYxePXT9bCS2&labels=_qc.clk,_click.adserver.rtb,_click.rand.1776008963&rtbip=103.229.8.152&rtbdata2=EAA6E2h0dHBzOi8vYW5hLXNsby5jb21aKGFHUHlGR2s3OFVSek42VVZaakx1RVc1azloZHpPNkFlYURQb3UyV0-AAYP-7s4GugEbQ0FFU0VPV1BBTHltaWZ2UnJPZ0JkZHNQNkg0wAGY4AfIAaOImLj2M9oBFkRjZVpFZmpDbTR2aDFaTzFZcklGRWewAgjIAgDQAs7hhvv4n_fMqQHoAowM8gIPCOzCGxCh3sDxo-uP_8gB8gINCIwMEI3rp7PK_IOFd_gCAIoDFjAucHViLTg5MzQ5OTM2NTMwNTk1MDGYAwCoAwCyAxAkDwECeHUAAAAAAAAAAAAAugMSCQtE_5W6RshyEXbzmLH7Qg-lwgMSCYNKG5_ZtiGEEYlTHuWQSK2WyAPIgMCCAdgDg_7uzgbiAw9wLTFSWXhlUFhUOWJDUzLqAwYIrAIQ2ATyAwgyNDYtMDAwMPgDAIAE4jSKBAI3N5oEEgkcTEACGy5MlREYDxIW5ZAfsaIEEgkLRP-VukbIchF285ix-0IPpaoEEgkLRP-VukbIchF285ix-0IPpbgE0AXQBBXyBAJKUIAFAZAFAbAFALgFAMAFg_7uzgbIBaLQqgTSBQYIBBABGALoBQWaBhQKEgkcTEACGy5MlREYDxIW5ZAfsaAGAKgGvpzSrgS1BmUAyzq6BkYKAkpQEgIxNBgAIgRzZXlhKggyNDYtMDAwMDoSa2RkaSUyMGNvcnBvcmF0aW9uWgtrZGRpJTIwY29ycKIBCGtkZGkuY29tyQaxCAAjnCCXE_EGAAAAI5wglxP4BgGABwCKBxIJg0obn9m2IYQRiVMe5ZBIrZawB9zrswS4B4jN_QTYBwQ&rtb_id=CbEIACOcIJcTEQAAACOcIJcTGDyTM6RaschNafd7Rpw&redirecturl3=&cachebuster=733141.148918291";
-var ftKeyword_8149134="";
-var ftCustom_8149134="JnwT1yd5HM4PKwDlU0U5vDttP8sneI-F-ZQ=";
-var ftSection_8149134="";
-var ftSegment_8149134="";
-var ftSegmentList_8149134=[];
-var ftRuleMatch_8149134="0";
-var ftTimestamp_8149134="1784139882";
-var ftGeoC2_8149134="jp";
-var ftGeoState_8149134="12";
-var ftGeoCity_8149134="yachiyo";
-var ftISP_8149134="kddi corporation";
-var ftSpeed_8149134="broadband";
-var ftConnType_8149134="wifi";
-var ftDMA_8149134="392001";
-var ftLong_8149134="140.08";
-var ftLat_8149134="35.72";
-var ftPostal_8149134="276-0046";
-var ftTimeZone_8149134="+900";
-var ftMobileCarrier_8149134="";
-var ftImp8149134 = {};
-ftImp8149134.privacy = "x";
-ftImp8149134.guidAge = "52";
-ftImp8149134.impID = "1BC2E6EA-7826-98E9-753E-3937D81AF7A5";
-ftImp8149134.duid = "FT:67181BA99F7BB8";
-
-ftImp8149134.ft_tpplid = "";
-ftImp8149134.ft_c = {};
-ftImp8149134.gdpr = "0";
-ftImp8149134.gdpr_consent = "";
-ftImp8149134.gdpr_pd = "";
-ftImp8149134.oob_consent = "";
-ftImp8149134.gdprStoredConsent = "";
-ftImp8149134.us_privacy = "";
-ftImp8149134.gpc = "";
-
-ftImp8149134.jsAppend = "1";
-var ftCreativeId_8149134 = "5833910";
-(function(){var tag=document.getElementById("ft_servedby_8149134")||function(s){return s[s.length-1]}(document.getElementsByTagName("script")),js=document.createElement("script");js.src="https://ajs-assets.ftstatic.com/ftUtils.js";js.id="ftscript_m8149134";js.setAttribute("name","ftscript_m8149134");tag.parentNode.insertBefore(js,tag)})();window.fTChecker=window.fTChecker||function(id){if(!id)return false;id=""+id;if(window.hasOwnProperty("ftUtils")){window["ft"+id]=Object.assign({},window.ftUtils.common);window["ft"+id].getBannerConfig(id)}else(function(id){window.setTimeout(function(){window.fTChecker(id)},50)})(id)};window.fTChecker("8149134");
-
