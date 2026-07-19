@@ -645,17 +645,25 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
         ai_ws = wb['【AI】予想・答え合わせ']
         
         # --- PREVENT DUPLICATE RECOMMENDATIONS ---
-        # Scan and remove any existing rows for tomorrow_date_val to prevent infinite duplicates
+        # Scan and remove any existing rows for the prediction target dates to prevent duplicates
         rows_to_delete = []
         for r in range(4, ai_ws.max_row + 1):
             cell_val = ai_ws.cell(r, 1).value
             normalized_cell_val = normalize_date_string(cell_val)
-            normalized_tomorrow = normalize_date_string(tomorrow_date_val)
-            if normalized_cell_val == normalized_tomorrow:
-                rows_to_delete.append(r)
+            
+            for row_data in rows_to_insert:
+                try:
+                    p_date = datetime.datetime.strptime(row_data[0].strip().replace("-", "/"), "%Y/%m/%d")
+                    normalized_p_date = normalize_date_string(p_date)
+                except Exception:
+                    normalized_p_date = normalize_date_string(tomorrow_date_val)
+                    
+                if normalized_cell_val == normalized_p_date:
+                    rows_to_delete.append(r)
+                    break
                 
         if rows_to_delete:
-            print(f"Removing {len(rows_to_delete)} duplicate prediction rows in 【AI】予想・答え合わせ for date {tomorrow_date}...")
+            print(f"Removing {len(rows_to_delete)} duplicate prediction rows in 【AI】予想・答え合わせ...")
             # Delete in reverse order to keep indices correct
             for r in reversed(rows_to_delete):
                 ai_ws.delete_rows(r)
@@ -674,8 +682,15 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
         for i, row_data in enumerate(rows_to_insert):
             curr_r = append_start_row + i
             
+            # Try parsing parsed date from table
+            try:
+                date_str_clean = row_data[0].strip().replace("-", "/")
+                dt_val = datetime.datetime.strptime(date_str_clean, "%Y/%m/%d")
+            except Exception:
+                dt_val = tomorrow_date_val
+                
             # Write date and format
-            dt_cell = ai_ws.cell(curr_r, 1, tomorrow_date_val)
+            dt_cell = ai_ws.cell(curr_r, 1, dt_val)
             dt_cell.number_format = 'yyyy/mm/dd'
             
             ai_ws.cell(curr_r, 2, row_data[1])
