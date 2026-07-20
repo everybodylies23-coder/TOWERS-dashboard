@@ -1385,11 +1385,19 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
             calculateOverallAIAccuracy();
         }}
 
-                function extractRankBadge(reasonStr) {{
+                                function extractRankBadge(reasonStr) {{
             if (!reasonStr) return '<span class="px-2 py-0.5 bg-slate-700 text-slate-300 rounded font-bold text-[11px]">-</span>';
-            if (reasonStr.includes('推奨Sランク') || reasonStr.includes('Sランク')) {{
-                return '<span class="px-2 py-0.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full font-bold text-[11px]">S</span>';
-            }} else if (reasonStr.includes('推奨Aランク') || reasonStr.includes('Aランク')) {{
+            const match = reasonStr.match(/(?:推奨)?([SAB])(?:ランク)?/i);
+            if (match) {{
+                const rank = match[1].toUpperCase();
+                if (rank === 'S') return '<span class="px-2 py-0.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full font-bold text-[11px]">S</span>';
+                if (rank === 'A') return '<span class="px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full font-bold text-[11px]">A</span>';
+                if (rank === 'B') return '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full font-bold text-[11px]">B</span>';
+            }}
+            return '<span class="px-2 py-0.5 bg-slate-700 text-slate-300 rounded font-bold text-[11px]">-</span>';
+        }}
+            return '<span class="px-2 py-0.5 bg-slate-700 text-slate-300 rounded font-bold text-[11px]">-</span>';
+        }} else if (reasonStr.includes('推奨Aランク') || reasonStr.includes('Aランク')) {{
                 return '<span class="px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full font-bold text-[11px]">A</span>';
             }} else if (reasonStr.includes('推奨Bランク') || reasonStr.includes('Bランク')) {{
                 return '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full font-bold text-[11px]">B</span>';
