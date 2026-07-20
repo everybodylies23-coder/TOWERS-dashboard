@@ -367,126 +367,211 @@ def update_excel_data(excel_path, target_date, parsed_data):
 
 def prepare_ai_context(excel_path, target_date):
     wb = openpyxl.load_workbook(excel_path, data_only=True)
-    
-    # 1. Dashboard stats
-    dash_data = []
-    if '【PC】分析ダッシュボード' in wb.sheetnames:
-        dash_ws = wb['【PC】分析ダッシュボード']
-        dash_data.append("### 【PC】分析ダッシュボード 現在の統計値 ###")
-        for r in range(4, 38):
-            row_vals = [dash_ws.cell(r, c).value for c in range(2, 6)]
-            if any(row_vals):
-                dash_data.append(f"Row {r}: " + " | ".join([str(x) if x is not None else "" for x in row_vals]))
-    else:
-        dash_data.append("### 【PC】分析ダッシュボード (削除済み - 代替Web版参照) ###")
-            
-    # 2. Raw records
     data_ws = wb['【データ】蓄積用']
-    data_rows = []
-    data_rows.append("### 【データ】蓄積用 最新直近データ (直近100台) ###")
-    data_rows.append("日付 | 機種名 | 台番号 | G数 | 差枚 | BB | RB | 推定設定 | 機械割 | 期待収支")
     
-    real_max_row = 1
-    for r in range(data_ws.max_row, 0, -1):
-        val1 = data_ws.cell(r, 1).value
-        val2 = data_ws.cell(r, 2).value
-        if not is_empty_or_formula(val1) or not is_empty_or_formula(val2):
-            real_max_row = r
-            break
-            
-    start_row = max(2, real_max_row - 100)
-    for r in range(start_row, real_max_row + 1):
-        row_vals = [
-            data_ws.cell(r, 1).value, # A: 日付
-            data_ws.cell(r, 2).value, # B: 機種
-            data_ws.cell(r, 3).value, # C: 台番
-            data_ws.cell(r, 4).value, # D: G数
-            data_ws.cell(r, 5).value, # E: 差枚
-            data_ws.cell(r, 6).value, # F: BB
-            data_ws.cell(r, 7).value, # G: RB
-            data_ws.cell(r, 33).value, # AG: 推定設定
-            data_ws.cell(r, 34).value, # AH: 機械割
-            data_ws.cell(r, 35).value, # AI: 期待収支
-        ]
+    all_records = []
+    for r in range(2, data_ws.max_row + 1):
+        d_val = data_ws.cell(r, 1).value
+        m_name = data_ws.cell(r, 2).value
+        m_num = data_ws.cell(r, 3).value
+        g_val = data_ws.cell(r, 4).value
+        diff_val = data_ws.cell(r, 5).value
+        bb_val = data_ws.cell(r, 6).value
+        rb_val = data_ws.cell(r, 7).value
+        score_val = data_ws.cell(r, 29).value
         
-        if isinstance(row_vals[0], datetime.datetime):
-            row_vals[0] = row_vals[0].strftime("%Y/%m/%d")
+        if d_val is None or m_num is None:
+            continue
             
-        data_rows.append(" | ".join([str(x) if x is not None else "" for x in row_vals]))
+        if isinstance(d_val, (datetime.datetime, datetime.date)):
+            d_str = d_val.strftime("%Y/%m/%d")
+        else:
+            d_str = str(d_val).strip().replace("-", "/")
+            
+        try:
+            m_num_int = int(str(m_num).strip())
+        except ValueError:
+            continue
+            
+        g_int = int(g_val) if g_val is not None and str(g_val).isdigit() else 0
+        diff_int = int(diff_val) if diff_val is not None and str(diff_val).replace("-","").isdigit() else 0
+        try:
+            sc_float = float(score_val) if score_val is not None else 0.0
+        except ValueError:
+            sc_float = 0.0
+            
+        all_records.append({
+            'date': d_str,
+            'machine_name': str(m_name or ""),
+            'machine_number': m_num_int,
+            'g_games': g_int,
+            'diff_coins': diff_int,
+            'bb': int(bb_val) if bb_val and str(bb_val).isdigit() else 0,
+            'rb': int(rb_val) if rb_val and str(rb_val).isdigit() else 0,
+            'score': sc_float
+        })
+
+    unique_dates = sorted(list(set(r['date'] for r in all_records)))
+    recent_5_dates = unique_dates[-5:] if len(unique_dates) >= 5 else unique_dates
+
+    tail_stats = {}
+    for digit in range(10):
+        tail_stats[digit] = {'total_diff': 0, 'total_count': 0, 'wins': 0, 'recent_diffs': []}
         
-    # 3. FEEDBACK LOOP: Load AI Prediction history and actual results (last 30 slots)
-    pred_history = []
+    for r in all_records:
+        t_digit = r['machine_number'] % 10
+        tail_stats[t_digit]['total_count'] += 1
+        tail_stats[t_digit]['total_diff'] += r['diff_coins']
+        if r['diff_coins'] > 0:
+            tail_stats[t_digit]['wins'] += 1
+            
+    for d_str in recent_5_dates:
+        day_recs = [r for r in all_records if r['date'] == d_str]
+        for digit in range(10):
+            d_recs = [r for r in day_recs if r['machine_number'] % 10 == digit]
+            d_sum = sum(r['diff_coins'] for r in d_recs) if d_recs else 0
+            tail_stats[digit]['recent_diffs'].append(f"{d_str[-5:]}:{d_sum:+d}枚")
+
+    tail_matrix_lines = []
+    for digit in range(10):
+        st = tail_stats[digit]
+        avg = round(st['total_diff'] / st['total_count']) if st['total_count'] > 0 else 0
+        w_rate = round((st['wins'] / st['total_count']) * 100) if st['total_count'] > 0 else 0
+        rec_str = " | ".join(st['recent_diffs'])
+        tail_matrix_lines.append(f"末尾【{digit}】: 平均差枚 {avg:+d}枚 | 勝率 {w_rate}% ({st['wins']}/{st['total_count']}) | 直近推移: {rec_str}")
+
+    position_lines = []
+    corner_recs = [r for r in all_records if r['machine_number'] % 10 in (1, 0, 5, 6)]
+    corner_win = round((sum(1 for r in corner_recs if r['diff_coins'] > 0) / len(corner_recs)) * 100) if corner_recs else 0
+    corner_avg = round(sum(r['diff_coins'] for r in corner_recs) / len(corner_recs)) if corner_recs else 0
+    position_lines.append(f"- 角台/角付近台: 勝率 {corner_win}% | 平均差枚 {corner_avg:+d}枚")
+    
+    other_recs = [r for r in all_records if r['machine_number'] % 10 not in (1, 0, 5, 6)]
+    other_win = round((sum(1 for r in other_recs if r['diff_coins'] > 0) / len(other_recs)) * 100) if other_recs else 0
+    other_avg = round(sum(r['diff_coins'] for r in other_recs) / len(other_recs)) if other_recs else 0
+    position_lines.append(f"- 中央/一般台: 勝率 {other_win}% | 平均差枚 {other_avg:+d}枚")
+
+    machine_summary = {}
+    for r in all_records:
+        name = r['machine_name']
+        if name not in machine_summary:
+            machine_summary[name] = {'total_diff': 0, 'count': 0, 'high_score_count': 0}
+        machine_summary[name]['total_diff'] += r['diff_coins']
+        machine_summary[name]['count'] += 1
+        if r['score'] >= 4.5 or r['diff_coins'] >= 1500:
+            machine_summary[name]['high_score_count'] += 1
+
+    mach_lines = []
+    for name, st in sorted(machine_summary.items(), key=lambda x: x[1]['total_diff'], reverse=True)[:15]:
+        avg = round(st['total_diff'] / st['count']) if st['count'] > 0 else 0
+        mach_lines.append(f"- {name}: 平均差枚 {avg:+d}枚 (全{st['count']}台) | 高設定/大爆発回数: {st['high_score_count']}回")
+
+    mach_history_lines = []
+    unique_mach_nums = sorted(list(set(r['machine_number'] for r in all_records)))
+    for m_num in unique_mach_nums:
+        m_recs = [r for r in all_records if r['machine_number'] == m_num]
+        if not m_recs:
+            continue
+        m_recs = sorted(m_recs, key=lambda x: x['date'])[-5:]
+        m_name = m_recs[-1]['machine_name']
+        hist_str = ", ".join([f"{r['date'][-5:]}:G{r['g_games']}/差{r['diff_coins']:+d}/点{r['score']}" for r in m_recs])
+        mach_history_lines.append(f"台#{m_num} ({m_name}): {hist_str}")
+
+    high_setting_db_lines = []
+    for m_num in unique_mach_nums:
+        m_recs = sorted([r for r in all_records if r['machine_number'] == m_num], key=lambda x: x['date'])
+        high_recs = [r for r in m_recs if r['score'] >= 4.5 or r['diff_coins'] >= 1500]
+        if high_recs:
+            last_high_date = high_recs[-1]['date']
+            events_since = len([r for r in m_recs if r['date'] > last_high_date])
+            high_setting_db_lines.append(f"台#{m_num} ({m_recs[-1]['machine_name']}): 前回高設定 {last_high_date} | 経過イベント数 {events_since}回")
+
+    pred_history_lines = []
+    penalty_tracker = {}
     if "【AI】予想・答え合わせ" in wb.sheetnames:
         predict_ws = wb["【AI】予想・答え合わせ"]
-        pred_history.append("### 過去のAI予想・答え合わせ履歴 (直近の答え合わせ結果) ###")
-        pred_history.append("予想日 | 機種名 | 台番号 | 予想・狙い根拠 | 実際のG数 | 実際の差枚 | 設定スコア | 判定(〇/×)")
-        
-        real_max_pred = 3
-        for r in range(predict_ws.max_row, 3, -1):
-            if predict_ws.cell(r, 1).value is not None:
-                real_max_pred = r
-                break
-                
-        start_pred_r = max(4, real_max_pred - 30)
-        for r in range(start_pred_r, real_max_pred + 1):
-            row_vals = [
-                predict_ws.cell(r, 1).value, # A: 予想日
-                predict_ws.cell(r, 2).value, # B: 機種名
-                predict_ws.cell(r, 3).value, # C: 台番号
-                predict_ws.cell(r, 4).value, # D: 根拠
-                predict_ws.cell(r, 5).value, # E: 実際のG数
-                predict_ws.cell(r, 6).value, # F: 実際の差枚
-                predict_ws.cell(r, 7).value, # G: 設定スコア
-                predict_ws.cell(r, 8).value, # H: 判定
-            ]
-            if isinstance(row_vals[0], datetime.datetime):
-                row_vals[0] = row_vals[0].strftime("%Y/%m/%d")
-            pred_history.append(" | ".join([str(x) if x is not None else "" for x in row_vals]))
+        for r in range(4, predict_ws.max_row + 1):
+            p_date = predict_ws.cell(r, 1).value
+            p_name = predict_ws.cell(r, 2).value
+            p_num = predict_ws.cell(r, 3).value
+            p_reason = predict_ws.cell(r, 4).value
+            p_g = predict_ws.cell(r, 5).value
+            p_diff = predict_ws.cell(r, 6).value
+            p_res = predict_ws.cell(r, 8).value
             
-    # 4. Load manual confirmation info (Trophy, events, SNS hints, etc.)
+            if p_date is None or p_num is None:
+                continue
+                
+            if isinstance(p_date, (datetime.datetime, datetime.date)):
+                pd_str = p_date.strftime("%Y/%m/%d")
+            else:
+                pd_str = str(p_date).strip()
+                
+            try:
+                p_num_int = int(str(p_num).strip())
+            except ValueError:
+                continue
+                
+            if p_num_int not in penalty_tracker:
+                penalty_tracker[p_num_int] = {'total': 0, 'wins': 0, 'consecutive_losses': 0}
+                
+            penalty_tracker[p_num_int]['total'] += 1
+            if str(p_res) == '〇':
+                penalty_tracker[p_num_int]['wins'] += 1
+                penalty_tracker[p_num_int]['consecutive_losses'] = 0
+            elif str(p_res) == '×':
+                penalty_tracker[p_num_int]['consecutive_losses'] += 1
+                
+            pred_history_lines.append(f"{pd_str} | 台#{p_num_int} ({p_name}) | 理由: {str(p_reason or '')[:25]} | G:{p_g} 差:{p_diff} | 判定:{p_res}")
+
+    consecutive_loss_warnings = []
+    for num, track in penalty_tracker.items():
+        if track['consecutive_losses'] >= 2:
+            consecutive_loss_warnings.append(f"⚠️ 台#{num}: 直近{track['consecutive_losses']}回連続で「×」判定中！(累計{track['wins']}/{track['total']}的中) ➔ 同一根拠での再推奨はペナルティ(-10〜-20点)適用！")
+
     confirm_data = []
     if "確認情報" in wb.sheetnames:
         confirm_ws = wb["確認情報"]
-        confirm_data.append("### ユーザー入力の店舗確認情報 (公約・示唆・トロフィー等の一次情報) ###")
-        
         for r in range(2, confirm_ws.max_row + 1):
             row_vals = [confirm_ws.cell(r, c).value for c in range(1, confirm_ws.max_column + 1)]
             if not any(v is not None for v in row_vals):
                 continue
-                
-            row_date = None
-            other_texts = []
-            for val in row_vals:
-                if val is None:
-                    continue
-                if isinstance(val, (datetime.datetime, datetime.date)):
-                    row_date = val.strftime("%Y/%m/%d")
-                elif isinstance(val, str):
-                    val_clean = val.strip()
-                    # Match dates like YYYY/MM/DD or YYYY-MM-DD
-                    if re.match(r'^\d{4}/\d{2}/\d{2}$', val_clean) or re.match(r'^\d{4}-\d{2}-\d{2}$', val_clean):
-                        row_date = val_clean.replace("-", "/")
-                    else:
-                        if val_clean:
-                            other_texts.append(val_clean)
-                else:
-                    other_texts.append(str(val))
-                    
-            if row_date and other_texts:
-                confirm_data.append(f"  {row_date} : " + " / ".join(other_texts))
-            elif other_texts:
-                confirm_data.append(f"  (日付不明) : " + " / ".join(other_texts))
-    else:
-        confirm_data.append("  (入力情報なし)")
-        
+            r_str = " / ".join([str(v).strip() for v in row_vals if v is not None])
+            if r_str:
+                confirm_data.append(f"  - {r_str}")
+    if not confirm_data:
+        confirm_data.append("  (入力情報なし - データの周期性・ローテーション分析を主軸としてください)")
+
     wb.close()
-    
-    return (
-        "\n".join(dash_data) + "\n\n" + 
-        "\n".join(data_rows) + "\n\n" + 
-        "\n".join(confirm_data) + "\n\n" + 
-        "\n".join(pred_history)
-    )
+
+    context_text = f"""
+■ セクション1: 末尾別分析マトリクス（直近5開催）
+{chr(10).join(tail_matrix_lines)}
+
+■ セクション2: 台位置傾向割合
+{chr(10).join(position_lines)}
+
+■ セクション3: 機種別強さ・高設定投入回数
+{chr(10).join(mach_lines)}
+
+■ セクション4: 主要台番号別・直近5開催推移（G数/差枚/設定スコア）
+{chr(10).join(mach_history_lines[:30])}
+
+■ セクション5: 高設定履歴DB（前回高設定からの経過イベント数）
+{chr(10).join(high_setting_db_lines[:25])}
+
+■ セクション6: 過去AI予想答え合わせ＆連続×ペナルティ警告
+【直近の答え合わせ履歴】
+{chr(10).join(pred_history_lines[-20:])}
+
+【連続×ペナルティ適用リスト（安易な再推奨厳禁）】
+{chr(10).join(consecutive_loss_warnings) if consecutive_loss_warnings else "（現在、2回以上連続×の要警戒台はありません）"}
+
+■ セクション7: ユーザー入力の店舗確認情報（公約・示唆・SNS等の一次情報）
+{chr(10).join(confirm_data)}
+"""
+    return context_text
+
 
 def run_gemini_analysis(api_key, context, target_date):
     import google.generativeai as genai
@@ -498,70 +583,117 @@ def run_gemini_analysis(api_key, context, target_date):
         'gemini-3.1-flash-lite',
         'gemini-2.0-flash'
     ]
-    
     prompt = f"""
-あなたはパチスロホールの設定配分を分析するプロのデータサイエンティストであり、月100万円以上を安定して稼ぐ現役パチプロ兼データアナリストです。
-提供されたホールの営業データ、および「過去のAI予想・答え合わせ履歴」「ユーザーが直接入力した店舗確認情報（公約や示唆、確定情報など）」から、店長の投入クセの傾向変化を学習した上で、次回のイベント開催予定日の推奨狙い台を決定してください。
+あなたはパチスロホールの設定配分、店長心理、イベント周期、台番ローテーションを解読するプロのデータサイエンティスト兼現役パチプロです。
+提供された「Python自動集計による構造化統計データ」に基づき、次回イベント開催日における推奨狙い台（計10台）を定量スコアリングの上で決定してください。
 
-【分析対象店舗の特性】
-本店舗（トワーズ大和深見店）は毎日ではなく、特定イベント開催日（特定末尾日：6日・16日・26日、ゾロ目の日：11日・22日など）のみ営業データを公開するイベント特化型のホールです。
-そのため、「明日」の予測ではなく、分析対象日（本日：{target_date}）より未来で最も近い【次回のイベント開催予定日】を特定して予測および参戦評価を行ってください。
-
+目的は、次回イベント開催日における高設定投入予想の精度を極限まで高めることです。
 一般ユーザー向けの解説は不要です。期待値を最大化するための分析のみを行ってください。
 
 ---
-【直近のデータ状況】
-分析対象日（本日結果）: {target_date}
+【分析対象店舗の特性】
+店舗名：トワーズ大和深見店
+特徴：
+- 通常日ではなく、特定イベント日に設定投入が集中するホール
+- 主なイベント対象：
+  ① 特定末尾日（6日・16日・26日など「末尾6」の日）
+  ② 日ゾロ目の日（11日・22日）
+  ③ 月日ゾロ目の日（6月6日、7月7日、8月8日などの月日重なり日）
+- 「明日」ではなく、分析対象日（本日：{target_date}）より未来で最も近い【次回イベント開催予定日】を特定して予想すること
 
-以下に最新のダッシュボード値、蓄積用データの直近100台分のサマリー、ユーザー入力の最新店舗確認情報（公約やトロフィーなどの一次情報）、および過去30台分の「答え合わせ履歴（判定〇×）」を提供します。
+---
+【提供データ（Python自動集計・構造化データ）】
 {context}
 
 ---
-【最優先・分析ルール】
+【最重要分析ルール】
 
-① 一次情報（店舗確認情報）の最優先
-「店舗確認情報」にトロフィー、確定画面、SNS示唆、LINE示唆、イベント公約、演者来店などが入力されている場合、これはAI of 過去データ推測より優先される「絶対的事実」です。これらに合致する台がある場合は最優先で狙い台として選定してください。
+1. 一次情報（店舗確認情報）の扱い
+一次情報（SNS示唆、公約、演者来店等）は毎回存在するわけではないため、絶対的判断基準ではなく「参考および周期補強要素（最大10点）」として扱うこと。データの周期性やローテーション分析を主軸とすること。
 
-② 荒波機種（スマスロ等）の補正
-からくりサーカス、ヴァルヴレイヴ、戦国乙女、チバリヨ、かぐや様、東京喰種、北斗、ゴッドイーター、モンキーターンなどは、ゲーム数、初当たり、設定差のある要素を重視してください。3000G未満の大量出玉は「誤爆リスク」として評価し、据え置き期待度は下げてください。
+2. 出玉だけで高設定扱いしない
+特にスマスロ・荒波機種は大量出玉だけで高設定と判断しない。3000G未満の大量出玉は誤爆リスクとして補正すること。
 
-③ ノーマルタイプ（ジャグラー等）の補正
-ジャグラー、ハナハナ等のノーマル機は、「REG確率」「合算確率」「回転数」「ブドウ逆算値」「REG先行度合い」を最重視して判断してください。
+3. 過去に連続×となった台の再推奨ルール
+セクション6（答え合わせ履歴）で直近2回以上連続で「×」となっている台番号は、同一の根拠での再推奨を厳禁とする。再推奨する場合は、これまでと異なる明確な新根拠（周期到達、お詫び条件合致等）がある場合に限る。
 
-④ リスク評価とあいまいさの排除
-「設定6濃厚」という安易な表現は禁止し、「設定5〜6期待」「高設定期待」などの堅実な表現を使用してください。
+4. 機種別の評価軸
+- ジャグラー・ノーマル系：REG確率、合算確率、回転数、REG先行、ブドウ逆算値、設定スコア4.5以上を重視。
+- スマスロ・AT系：G数（6,000G以上の高稼働は高設定評価）、差枚（+1,000枚以上）、初当たり、設定差要素、イベント対象機種かを重視。
 
-⑤ 店長心理・クセの分析
-店長の投入パターン（並び、全台系、据え置き、末尾、角、中央、ローテーション傾向）を分析し、店長の心理を考察してください。
+5. 安易な断定表現の禁止
+「設定6濃厚」「100%入る」などの安易な表現は禁止。「高設定期待」「設定5〜6期待」「本命候補」「抑え候補」などの堅実な表現を使用すること。
+
+---
+【100点満点スコアリング基準】
+
+各候補台を以下の基準で100点満点で定量評価してください。
+
+【加点項目（最大100点）】
+- 末尾・イベント周期との一致（月日ゾロ目・日ゾロ目・末尾6等）：最大20点
+- 台番ローテーション・周期到達率（高設定履歴DB）：最大20点
+- 店長配分クセ・位置特性（角、角2、中央、スライド、据え置き傾向）：最大15点
+- 直近不発からのお詫び・リベンジ投入期待：最大15点
+- 機種扱いの強さ・本気度：最大15点
+- 一次情報（店舗確認情報・SNS示唆・公約等）の一致・補強：最大10点
+- 過去AI予想の答え合わせ精度・相性：最大5点
+
+【減点項目】
+- 低G数の誤爆疑い：-5〜-20点
+- 根拠が出玉のみ：-10〜-25点
+- 直近で連続×判定を受けている台の安易な再推：-10〜-20点
+- 店舗傾向・クセとの矛盾：-10〜-30点
+
+---
+【ランク判定ルール】
+※通算勝率はS・Aランクのみで計算されるため、基準を厳格に適用してください。
+- 【Sランク】（90点以上）：根拠が3つ以上重複する超本命台。
+- 【Aランク】（75〜89点）：根拠が2つ以上重複する強狙い台。
+- 【Bランク】（60〜74点）：根拠はあるが確証が弱い抑え台（参考枠）。
+- 【Cランク】（59点以下）：選定不可。
+
+---
+【出力台数（絶対厳守）】
+以下の合計10台を必ず選定してください。
+- ジャグラー系（ノーマルタイプ）：5台
+- スマスロ・その他：5台
+※S・Aランクが不足する場合は、無理に高ランクを付けず、Bランクとして出力してください。
 
 ---
 【絶対厳守の出力フォーマット】
-以下の構成で日本語で出力してください。スプレッドシートやドキュメントにそのままコピーできる構成とします。
 
 ① 【AI】営業評価と店長の心理総括
-冒頭に、必ず以下のフォーマットで次回イベントへの参戦評価および次回イベント予測日を明記してください。
+【次回イベントの参戦評価：行ける（勝負すべき日）】
+（※選択肢：「行ける（勝負すべき日）」「狙い目だけ打ちに行く（ピンポイント狙い）」「行く価値無し（見送り推奨）」）
+次回イベント予測日：YYYY/MM/DD（イベント特徴：例 月日ゾロ目の日 / 末尾6の日 / 日ゾロ目の日）
 
-【次回イベントの参戦評価：行ける（勝負すべき日）】 （※または「狙い目だけ打ちに行く（ピンポイント狙い）」「行く価値無し（見送り推奨）」）
-次回イベント予測日：YYYY/MM/DD（特定イベント特徴：例 特定末尾日：末尾「6」 / ゾロ目の日）
+本日の営業結果を踏まえ、店長の意図（還元・回収・フェイク・スライド・末尾寄せ）を簡潔に分析してください。
 
-その後に、本日（{target_date}）の結果を踏まえた店長の意図（還元・回収）の考察を1分で読める文量で書いてください。
+② 機種別・設定投入の本気度検証
+- 本命機種
+- 準本命機種
+- 回収用・危険機種
+- ジャグラー系の扱い
+- スマスロ系の扱い
 
-② 機種別・設定投入の「本気度」検証
-「今、最も設定が狙える本命機種」と「回収用の死に機種」のリストアップと理由。
+③ 店長の投入クセ・周期法則
+- 強い末尾と次回巡回末尾の予測（月日ゾロ目・日ゾロ目含む）
+- 角・角2・中央の配分傾向
+- 据え置き・スライド・お詫び投入の分析
+- 前回予想とのズレ・反省点
 
-③ Excel予測スコアの「妥当性検証レポート」
-現在の予測スコアが実際の店舗傾向と合っているかの検証。ズレの指摘。
-
-④ AI独自の次回（イベント開催日）の推奨狙い目台（全機種TOP5 ＆ ジャグラーTOP5）
-表面的なスコアだけでなく、「周期」「機種の強さ」「確認情報の事実」を複合して補正した推奨台と根拠。
+④ AI独自の次回推奨狙い台
+全機種TOP5とジャグラーTOP5を分けて解説してください。各台について【点数・ランク・最重要根拠・リスク要因】を明記すること。
 
 ⑤ 【AI】予想・答え合わせ コピペ用テーブル
-推奨狙い目台（全機種5台 ＋ ジャグラー5台 ＝ 計10台）を、以下のMarkdown表形式で出力してください。
-日付には必ず【次回のイベント開催予定日（例: YYYY/MM/DD）】を記入すること。
+以下のMarkdown表形式で出力してください。日付には必ず【次回イベント予定日】を記入すること。
 
 | 日付 | 機種名 | 台番号 | 予想・狙い根拠 |
 | --- | --- | --- | --- |
-| [次回イベント予定日] | [機種名] | [台番号] | 【推奨[S/A/B]ランク - [点数]点】[狙い根拠] |
+| YYYY/MM/DD | 機種名 | 台番号 | 【推奨[S/A/B]ランク - [点数]点】根拠：[重複根拠]。リスク：[リスク要因]。 |
+
+⑥ 本日（次回イベント）で最も自信があるTOP 3台
+10台の中から、最も信頼度が高いTOP 3台を抽出し、その理由を短く書いて締めくくってください。
 """
     
     for model_name in models_to_try:
@@ -738,7 +870,11 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
                             df_v = int(diff_coins) if diff_coins is not None else -9999
                         except ValueError:
                             df_v = -9999
-                        res = "〇" if (df_v >= 1000) else "×"
+                        try:
+                            gm_v = int(g_games) if g_games is not None else 0
+                        except ValueError:
+                            gm_v = 0
+                        res = "〇" if (df_v >= 1000 or gm_v >= 6000) else "×"
                         
                     ai_ws.cell(r, 8, res)
                     rewritten_count += 1
