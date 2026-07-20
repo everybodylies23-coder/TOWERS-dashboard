@@ -1702,7 +1702,7 @@ def main():
     write_ai_results_to_excel(excel_file, target_date, ai_text)
     
     # 4. Generate the fully interactive HTML Dashboard for instant check
-    generate_html_dashboard(excel_file, store_name, has_diff_coins=store_config.get('has_diff_coins', False))
+    generate_html_dashboard(excel_file, store_name, has_diff_coins=store_info.get('has_diff_coins', True))
     
     # 5. Automatically deploy to GitHub Pages
     deploy_to_github()
