@@ -1164,7 +1164,8 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
                                 <tr class="border-b border-slate-800 text-slate-400">
                                     <th class="py-2 px-2">機種名</th>
                                     <th class="py-2 px-2">台番</th>
-                                    <th class="py-2 px-2">根拠</th>
+                                    <th class="py-2 px-2 text-center">ランク</th>
+                                    <th class="py-2 px-2">予想・狙い根拠</th>
                                 </tr>
                             </thead>
                             <tbody id="pred-juggler-body" class="divide-y divide-slate-800/50">
@@ -1183,7 +1184,8 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
                                 <tr class="border-b border-slate-800 text-slate-400">
                                     <th class="py-2 px-2">機種名</th>
                                     <th class="py-2 px-2">台番</th>
-                                    <th class="py-2 px-2">根拠</th>
+                                    <th class="py-2 px-2 text-center">ランク</th>
+                                    <th class="py-2 px-2">予想・狙い根拠</th>
                                 </tr>
                             </thead>
                             <tbody id="pred-others-body" class="divide-y divide-slate-800/50">
@@ -1217,6 +1219,7 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
                                 <thead>
                                     <tr class="border-b border-slate-800 text-slate-400">
                                         <th class="py-2 px-1">台番 (機種)</th>
+                                        <th class="py-2 px-1 text-center">ランク</th>
                                         <th class="py-2 px-1 text-right">${'差枚' if has_diff_coins else 'G数'}</th>
                                         <th class="py-2 px-1 text-center">スコア</th>
                                         <th class="py-2 px-1 text-center">結果</th>
@@ -1269,6 +1272,7 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
                                 <thead>
                                     <tr class="border-b border-slate-800 text-slate-400">
                                         <th class="py-2 px-1">台番 (機種)</th>
+                                        <th class="py-2 px-1 text-center">ランク</th>
                                         <th class="py-2 px-1 text-right">${'差枚' if has_diff_coins else 'G数'}</th>
                                         <th class="py-2 px-1 text-center">スコア</th>
                                         <th class="py-2 px-1 text-center">結果</th>
@@ -1379,6 +1383,18 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
             }}
             
             calculateOverallAIAccuracy();
+        }}
+
+                function extractRankBadge(reasonStr) {{
+            if (!reasonStr) return '<span class="px-2 py-0.5 bg-slate-700 text-slate-300 rounded font-bold text-[11px]">-</span>';
+            if (reasonStr.includes('推奨Sランク') || reasonStr.includes('Sランク')) {{
+                return '<span class="px-2 py-0.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full font-bold text-[11px]">S</span>';
+            }} else if (reasonStr.includes('推奨Aランク') || reasonStr.includes('Aランク')) {{
+                return '<span class="px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full font-bold text-[11px]">A</span>';
+            }} else if (reasonStr.includes('推奨Bランク') || reasonStr.includes('Bランク')) {{
+                return '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full font-bold text-[11px]">B</span>';
+            }}
+            return '<span class="px-2 py-0.5 bg-slate-700 text-slate-300 rounded font-bold text-[11px]">-</span>';
         }}
 
         function isJugglerMachine(name) {{
@@ -1520,7 +1536,7 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
             }};
 
             if (jugAnswers.length === 0) {{
-                ansJugglerBody.innerHTML = '<tr><td colspan="4" class="py-3 text-center text-slate-500">答え合わせはありません。</td></tr>';
+                ansJugglerBody.innerHTML = '<tr><td colspan="5" class="py-3 text-center text-slate-500">答え合わせはありません。</td></tr>';
             }} else {{
                 jugAnswers.forEach(a => {{
                     const tr = document.createElement('tr');
@@ -1531,7 +1547,7 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
             }}
 
             if (otherAnswers.length === 0) {{
-                ansOthersBody.innerHTML = '<tr><td colspan="4" class="py-3 text-center text-slate-500">答え合わせはありません。</td></tr>';
+                ansOthersBody.innerHTML = '<tr><td colspan="5" class="py-3 text-center text-slate-500">答え合わせはありません。</td></tr>';
             }} else {{
                 otherAnswers.forEach(a => {{
                     const tr = document.createElement('tr');
@@ -1550,7 +1566,7 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
                 if (jugHighCountSpan) jugHighCountSpan.textContent = `${{jugHighRecords.length}}台`;
                 
                 if (jugHighRecords.length === 0) {{
-                    jugHighScoreBody.innerHTML = '<tr><td colspan="4" class="py-3 text-center text-slate-500">該当する高設定挙動台(4.5以上)はありません。</td></tr>';
+                    jugHighScoreBody.innerHTML = '<tr><td colspan="5" class="py-3 text-center text-slate-500">該当する高設定挙動台(4.5以上)はありません。</td></tr>';
                 }} else {{
                     jugHighRecords.forEach(r => {{
                         const tr = document.createElement('tr');
