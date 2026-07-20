@@ -1198,7 +1198,13 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
         const rawSummaries = {json.dumps(summaries, ensure_ascii=False)};
         
         let machineChart = null;
-        Chart.register(ChartDataLabels);
+        if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {{
+            try {{
+                Chart.register(ChartDataLabels);
+            }} catch (e) {{
+                console.warn('ChartDataLabels warning:', e);
+            }}
+        }}
 
         document.addEventListener('DOMContentLoaded', () => {{
             initializeDashboard();
