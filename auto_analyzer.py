@@ -943,7 +943,7 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
     dt_c.number_format = 'yyyy/mm/dd'
     summary_ws.cell(target_sum_row, 6, ai_text)
     
-    wb.save(excel_path)
+    safe_save_workbook(wb, excel_path)
     wb.close()
     print("AI Analysis results written successfully into sheets.")
 
@@ -1437,9 +1437,9 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
                 if (index4 !== -1 && index6 !== -1 && index6 > index4) {{
                     const part1 = cleanText.substring(0, index4).trim();
                     const part2 = cleanText.substring(index6).trim();
-                    cleanText = part1 + '
+                    cleanText = part1 + "
 
-' + part2;
+" + part2;
                 }} else if (index4 !== -1) {{
                     cleanText = cleanText.substring(0, index4).trim();
                 }}
