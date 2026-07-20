@@ -366,13 +366,22 @@
                 document.getElementById('ai-summary-text').innerHTML = '<p class="text-slate-500">この日のAI営業総括データはありません。</p>';
             }
 
-            // 3. Load Predictions for the next day (Segmented Juggler vs Others & Deduplicated!)
-            const d = new Date(targetDate);
-            d.setDate(d.getDate() + 1);
-            const tomorrowStr = d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
-            
+            // 3. Load Predictions for the next event day (Segmented Juggler vs Others & Deduplicated!)
             const dedupedPredictions = deduplicatePredictions(rawPredictions);
-            const filteredPredictions = dedupedPredictions.filter(p => p.date === tomorrowStr);
+            const predictionDates = [...new Set(dedupedPredictions.map(p => p.date))].sort();
+            let nextEventDate = predictionDates.find(dStr => dStr > targetDate);
+            if (!nextEventDate && predictionDates.length > 0) {
+                nextEventDate = predictionDates[predictionDates.length - 1];
+            }
+            
+            const nextEventTitle = document.getElementById('next-event-title');
+            if (nextEventTitle && nextEventDate) {
+                nextEventTitle.textContent = `次回（${nextEventDate}）のAI推奨狙い目台`;
+            } else if (nextEventTitle) {
+                nextEventTitle.textContent = '次回イベント推奨台';
+            }
+            
+            const filteredPredictions = nextEventDate ? dedupedPredictions.filter(p => p.date === nextEventDate) : [];
             
             const predJugglerBody = document.getElementById('pred-juggler-body');
             const predOthersBody = document.getElementById('pred-others-body');
@@ -485,7 +494,7 @@
             const jugHighCountSpan = document.getElementById('jug-high-count');
             if (jugHighScoreBody) {
                 jugHighScoreBody.innerHTML = '';
-                const jugHighRecords = targetRecords.filter(r => isJugglerMachine(r.name) && (r.score >= 4.5)).sort((a, b) => b.score - a.score);
+                const jugHighRecords = filteredRecords.filter(r => isJugglerMachine(r.name) && (r.score >= 4.5)).sort((a, b) => b.score - a.score);
                 if (jugHighCountSpan) jugHighCountSpan.textContent = `${jugHighRecords.length}台`;
                 
                 if (jugHighRecords.length === 0) {
@@ -513,7 +522,7 @@
             const topPerfBody = document.getElementById('top-performance-body');
             if (topPerfBody) {
                 topPerfBody.innerHTML = '';
-                const topRecords = [...targetRecords].sort((a, b) => HAS_DIFF_COINS ? (b.diff - a.diff) : (b.games - a.games)).slice(0, 5);
+                const topRecords = [...filteredRecords].sort((a, b) => HAS_DIFF_COINS ? (b.diff - a.diff) : (b.games - a.games)).slice(0, 5);
                 
                 if (topRecords.length === 0) {
                     topPerfBody.innerHTML = '<tr><td colspan="3" class="py-3 text-center text-slate-500">実績データがありません。</td></tr>';
