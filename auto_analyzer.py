@@ -747,32 +747,34 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
 
     print(f"Pre-calculated & optimized {rewritten_count} cells in 【AI】予想・答え合わせ.")
 
-    # 3. Create or Update Summary sheet
+    # 3. Create or Update Summary sheet (Consistently writing to Column E (5) & Column F (6))
     summary_ws = None
     if '【AI】総括' in wb.sheetnames:
         summary_ws = wb['【AI】総括']
     else:
         summary_ws = wb.create_sheet('【AI】総括')
-        summary_ws.cell(1, 1, "日付 (結果日)")
-        summary_ws.cell(1, 2, "AIからの総括 (コピペ用)")
+        summary_ws.cell(1, 5, "日付 (結果日)")
+        summary_ws.cell(1, 6, "AIからの総括 (コピペ用)")
         
     last_sum_r = 1
-    for r in range(summary_ws.max_row, 1, -1):
-        if not is_empty_or_formula(summary_ws.cell(r, 1).value):
+    for r in range(summary_ws.max_row, 0, -1):
+        v5 = summary_ws.cell(r, 5).value
+        v6 = summary_ws.cell(r, 6).value
+        if not is_empty_or_formula(v5) or not is_empty_or_formula(v6):
             last_sum_r = r
             break
             
     found_date_row = None
-    for r in range(2, last_sum_r + 1):
-        c_val = summary_ws.cell(r, 1).value
+    for r in range(1, last_sum_r + 1):
+        c_val = summary_ws.cell(r, 5).value
         if normalize_date_string(c_val) == normalize_date_string(d_obj):
             found_date_row = r
             break
             
     target_sum_row = found_date_row if found_date_row else last_sum_r + 1
-    dt_c = summary_ws.cell(target_sum_row, 1, d_obj)
+    dt_c = summary_ws.cell(target_sum_row, 5, d_obj)
     dt_c.number_format = 'yyyy/mm/dd'
-    summary_ws.cell(target_sum_row, 2, ai_text)
+    summary_ws.cell(target_sum_row, 6, ai_text)
     
     wb.save(excel_path)
     wb.close()
