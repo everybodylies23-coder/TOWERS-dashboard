@@ -1192,6 +1192,7 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
 
     <!-- Embedding JSON Data -->
     <script>
+        const HAS_DIFF_COINS = {'true' if has_diff_coins else 'false'};
         const rawRecords = {json.dumps(records, ensure_ascii=False)};
         const rawPredictions = {json.dumps(predictions, ensure_ascii=False)};
         const rawSummaries = {json.dumps(summaries, ensure_ascii=False)};
