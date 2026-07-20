@@ -374,14 +374,24 @@
             document.getElementById('stat-avg-diff').textContent = avgDiff.toLocaleString() + ' 枚';
             document.getElementById('stat-win-rate').textContent = winRate + '%';
 
-            // 2. Load AI Summary text (Markdown render & strip ④, ⑤, ⑥ to prevent duplication!)
+            // 2. Load AI Summary text (Markdown render & keep ①, ②, ③ and ⑥, stripping ④ and ⑤!)
             const summaryObj = rawSummaries.find(s => s.date === targetDate);
             if (summaryObj && summaryObj.text) {
                 let cleanText = summaryObj.text;
-                const cutoffIndex = cleanText.search(/(④|4\.|⑤|5\.|⑥|6\.|AI独自の次回推奨狙い台)/);
-                if (cutoffIndex !== -1) {
-                    cleanText = cleanText.substring(0, cutoffIndex).trim();
+                // If text contains ④ and ⑥, strip out ④ and ⑤ between them, keeping ①, ②, ③ and ⑥
+                const index4 = cleanText.search(/(④|4\.|AI独自の次回推奨狙い台)/);
+                const index6 = cleanText.search(/(⑥|6\.|最も自信があるTOP)/);
+                
+                if (index4 !== -1 && index6 !== -1 && index6 > index4) {
+                    const part1 = cleanText.substring(0, index4).trim();
+                    const part2 = cleanText.substring(index6).trim();
+                    cleanText = part1 + '
+
+' + part2;
+                } else if (index4 !== -1) {
+                    cleanText = cleanText.substring(0, index4).trim();
                 }
+                
                 document.getElementById('ai-summary-text').innerHTML = marked.parse(cleanText);
             } else {
                 document.getElementById('ai-summary-text').innerHTML = '<p class="text-slate-500">この日のAI営業総括データはありません。</p>';
