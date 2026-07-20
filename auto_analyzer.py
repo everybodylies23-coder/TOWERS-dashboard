@@ -122,8 +122,8 @@ def read_file_with_encoding(filepath):
 
 def parse_html_data(filepath):
     """
-    Parses Pachislot data from a downloaded HTML file.
-    Only targets tables with explicit '台番' or '台番号' headers to ignore summary/history tables.
+    Parses Pachislot data from a downloaded HTML file using header detection.
+    Supports tables with or without '差枚' (difference coins) column.
     """
     results = []
     seen_machine_numbers = set()
@@ -141,20 +141,22 @@ def parse_html_data(filepath):
                 
         header_text = "".join(headers)
         
-        # Strict check: Must contain BB and REG/RB, AND must explicitly mention 台番 or 台番号
         is_slot_table = (
-            ("BB" in headers and "RB" in headers) and 
+            ("BB" in header_text or "BIG" in header_text) and 
+            ("RB" in header_text or "REG" in header_text) and 
             any(h in header_text for h in ["台番", "台番号"])
         )
         if not is_slot_table:
             continue
             
+        has_diff = ("差枚" in header_text)
+        
         rows = table.find_all('tr')
         for row in rows:
             cells = [td.get_text().strip() for td in row.find_all('td')]
-            if len(cells) >= 5:
+            if len(cells) >= 4:
                 cell_text = "".join(cells)
-                if any(x in cell_text for x in ["平均", "累計", "合計"]):
+                if any(x in cell_text for x in ["平均", "累計", "合計", "台番号", "機種名"]):
                     continue
                 try:
                     def clean_val(val):
@@ -167,16 +169,26 @@ def parse_html_data(filepath):
                         machine_number = int(c0_clean)
                         machine_name = cells[1]
                         g_games = int(clean_val(cells[2]))
-                        diff_coins = int(clean_val(cells[3]))
-                        bb_count = int(clean_val(cells[4]))
-                        rb_count = int(clean_val(cells[5])) if len(cells) > 5 else 0
+                        if has_diff:
+                            diff_coins = int(clean_val(cells[3]))
+                            bb_count = int(clean_val(cells[4]))
+                            rb_count = int(clean_val(cells[5])) if len(cells) > 5 else 0
+                        else:
+                            diff_coins = 0
+                            bb_count = int(clean_val(cells[3]))
+                            rb_count = int(clean_val(cells[4])) if len(cells) > 4 else 0
                     else:
                         machine_name = cells[0]
                         machine_number = int(c1_clean)
                         g_games = int(clean_val(cells[2]))
-                        diff_coins = int(clean_val(cells[3]))
-                        bb_count = int(clean_val(cells[4]))
-                        rb_count = int(clean_val(cells[5])) if len(cells) > 5 else 0
+                        if has_diff:
+                            diff_coins = int(clean_val(cells[3]))
+                            bb_count = int(clean_val(cells[4]))
+                            rb_count = int(clean_val(cells[5])) if len(cells) > 5 else 0
+                        else:
+                            diff_coins = 0
+                            bb_count = int(clean_val(cells[3]))
+                            rb_count = int(clean_val(cells[4])) if len(cells) > 4 else 0
                     
                     if machine_number in seen_machine_numbers:
                         continue
@@ -190,7 +202,7 @@ def parse_html_data(filepath):
                         "bb_count": bb_count,
                         "rb_count": rb_count
                     })
-                except ValueError:
+                except (ValueError, IndexError):
                     continue
                     
     print(f"Successfully extracted {len(results)} unique rows from HTML tables.")
@@ -467,43 +479,12 @@ def prepare_ai_context(excel_path, target_date):
     else:
         confirm_data.append("  (入力情報なし)")
         
-    # 5. Load Special Day configurations from 【分析】高設定履歴DB
-    special_days_info = []
-    db_sheet_name = None
-    for name in wb.sheetnames:
-        if "履歴" in name or "DB" in name:
-            db_sheet_name = name
-            break
-            
-    if db_sheet_name:
-        db_ws = wb[db_sheet_name]
-        val_b = db_ws.cell(2, 2).value  # B2: 特定末尾
-        val_c = db_ws.cell(2, 3).value  # C2: ゾロ目
-        val_e = db_ws.cell(2, 5).value  # E2: 月日ゾロ目
-        
-        special_days_info.append("### 店舗の特定日（イベント日）設定 ###")
-        details = []
-        if val_b is not None and str(val_b).strip() != "":
-            details.append(f"- 特定末尾日: 末尾が「{val_b}」の日 (例: 6日, 16日, 26日)")
-        if val_c == "ゾロ目":
-            details.append("- 特定ゾロ目日: 日付がゾロ目の日 (例: 11日, 22日)")
-        if val_e == "月日ゾロ目":
-            details.append("- 月日ゾロ目日: 月と日の数字が同じ日 (例: 7月7日, 8月8日)")
-            
-        if details:
-            special_days_info.extend(details)
-        else:
-            special_days_info.append("- 特定日の設定はありません。")
-    else:
-        special_days_info.append("### 店舗の特定日設定 (データなし) ###")
-        
     wb.close()
     
     return (
         "\n".join(dash_data) + "\n\n" + 
         "\n".join(data_rows) + "\n\n" + 
         "\n".join(confirm_data) + "\n\n" + 
-        "\n".join(special_days_info) + "\n\n" + 
         "\n".join(pred_history)
     )
 
@@ -523,24 +504,23 @@ def run_gemini_analysis(api_key, context, target_date):
     
     prompt = f"""
 あなたはパチスロホールの設定配分を分析するプロのデータサイエンティストであり、月100万円以上を安定して稼ぐ現役パチプロ兼データアナリストです。
-提供されたホールの営業データ、および「過去のAI予想・答え合わせ履歴」「ユーザーが直接入力した店舗確認情報」「店舗の特定日（イベント日）設定」から、店長の投入クセの傾向変化を学習した上で、次回のイベント特定日の推奨狙い台を決定してください。
+提供されたホールの営業データ、および「過去のAI予想・答え合わせ履歴」「ユーザーが直接入力した店舗確認情報（公約や示唆、確定情報など）」から、店長の投入クセの傾向変化を学習した上で、明日の推奨狙い台を決定してください。
 
 一般ユーザー向けの解説は不要です。期待値を最大化するための分析のみを行ってください。
 
 ---
 【直近のデータ状況】
 分析対象日: {target_date} （このデータを本日追加しました）
-※注意※：この店舗は毎日データが公開されず、特定日（イベント日）のみデータが蓄積されます。
-そのため、明日の予測ではなく、後述の「店舗の特定日設定」を参照し、分析対象日（本日：{target_date}）より未来で最も近い【次回のイベント開催予定日】を特定して予測日としてください。
+狙い対象日 (翌日): {tomorrow_date}
 
-以下に最新のダッシュボード値、蓄積用データの直近100台分のサマリー、ユーザー入力の最新店舗確認情報、および過去30台分の「答え合わせ履歴（判定〇×）」を提供します。
+以下に最新のダッシュボード値、蓄積用データの直近100台分のサマリー、ユーザー入力の最新店舗確認情報（公約やトロフィーなどの一次情報）、および過去30台分の「答え合わせ履歴（判定〇×）」を提供します。
 {context}
 
 ---
 【最優先・分析ルール】
 
 ① 一次情報（店舗確認情報）の最優先
-「店舗確認情報」にトロフィー、確定画面、SNS示唆、LINE示唆、イベント公約、演者来店などが入力されている場合、これはAIの過去データ推測より優先される「絶対的事実」です。これらに合致する台（例: 全台系公約、並び公約など）がある場合は、最優先で狙い台として選定してください。
+「店舗確認情報」にトロフィー、確定画面、SNS示唆、LINE示唆、イベント公約、演者来店などが入力されている場合、これはAI of 過去データ推測より優先される「絶対的事実」です。これらに合致する台（例: 全台系公約、並び公約など）がある場合は、最優先で狙い台として選定してください。
 
 ② 荒波機種（スマスロ等）の補正
 からくりサーカス、ヴァルヴレイヴ、戦国乙女、チバリヨ、かぐや様、東京喰種、北斗、ゴッドイーター、モンキーターンなどは、差枚数だけで設定を判断せず、ゲーム数、初当たり、設定差のある要素（小役・示唆）を重視してください。3000G未満の大量出玉は「誤爆リスク」として評価し、据え置き期待度は下げてください。
@@ -551,21 +531,19 @@ def run_gemini_analysis(api_key, context, target_date):
 ④ リスク評価とあいまいさの排除
 中間設定（設定4〜5）の可能性やヒキ強による誤爆リスクも必ず根拠内で考慮してください。「設定6濃厚」という安易な表現は禁止し、「設定5〜6期待」「高設定期待」などの堅実な表現を使用してください。
 
-⑤ 次回イベント日の予測（超重要）
-提供データ内の「### 店舗の特定日（イベント日）設定 ###」を必ず読み込んでください。
-例えば、特定末尾日が「6」と設定されている場合、本日（{target_date}）が7月16日（6のつくイベント日）であれば、次回予測日は次の「6のつく特定日」である**7月26日**となります。ゾロ目が設定されている場合は22日、月日ゾロ目があれば7月7日や8月8日などとなります。
-本日日付の直後で、設定されたルール（末尾、ゾロ目、月日ゾロ目）に合致する「最も近い未来のイベント日」を算出して、予測ターゲット日としてください。
+⑤ 店長心理・クセの分析
+店長の投入パターン（並び、全台系、据え置き、末尾、角、中央、ローテーション傾向）を分析し、店長の心理を考察してください。
 
 ---
 【絶対厳守の出力フォーマット】
 以下の構成で日本語で出力してください。スプレッドシートやドキュメントにそのままコピーできる構成とします。
 
 ① 【AI】営業評価と店長の心理総括
-冒頭に、必ず次回の参戦評価として以下のいずれか1つを大見出しで明記してください。
-- **【次回イベントの参戦評価：行ける（勝負すべき日）】**
-- **【次回イベントの参戦評価：狙い目だけ打ちに行く（ピンポイント狙い）】**
-- **【次回イベントの参戦評価：行く価値無し（見送り推奨）】**
-その後に、予測した「次回イベント開催日（YYYY/MM/DD）」と、店長の設定配分（還元・回収）の予測を書いてください。
+冒頭に、必ず明日の参戦評価として以下のいずれか1つを大見出しで明記してください。
+- **【明日の参戦評価：行ける（勝負すべき日）】**
+- **【明日の参戦評価：狙い目だけ打ちに行く（ピンポイント狙い）】**
+- **【明日の参戦評価：行く価値無し（見送り推奨）】**
+その後に、最新日の結果を踏まえた店長の意図（還元・回収）の考察を1分で読める文量で書いてください。
 
 ② 機種別・設定投入の「本気度」検証
 「今、最も設定が狙える本命機種」と「回収用の死に機種」のリストアップと理由。
@@ -573,19 +551,19 @@ def run_gemini_analysis(api_key, context, target_date):
 ③ Excel予測スコアの「妥当性検証レポート」
 現在の予測スコアが実際の店舗傾向と合っているかの検証。ズレの指摘。
 
-④ AI独自の次回イベント時の推奨狙い目台（全機種TOP5 ＆ ジャグラーTOP5）
-表面的なスコアだけでなく、「周期」「機種の強さ」「確認情報」を複合して補正した推奨台と根拠。
+④ AI独自の次回（明日）の推奨狙い目台（全機種TOP5 ＆ ジャグラーTOP5）
+表面的なスコアだけでなく、「周期」「機種の強さ」「確認情報の事実」を複合して補正した推奨台と根拠。
 
 ⑤ 【AI】予想・答え合わせ コピペ用テーブル
 推奨狙い目台（全機種5台 ＋ ジャグラー5台 ＝ 計10台）を、以下のMarkdown表形式で出力してください。
 余計なテキストを挟まず、必ず表をそのまま出力すること。
-日付には、あなたが予測した**「次回のイベント予測日（YYYY/MM/DD）」**を記入すること。
+日付には結果日（＝狙い日：{tomorrow_date}）を記入すること。
 
-★重要★: 推奨度の強さを可視化するため、「予想・狙い根拠」の文頭には必ず【推奨Sランク - 95点】、【推奨Aランク - 80点】、【推奨Bランク - 65点】のように、推奨ランク（S/A/B）と100点満点での評価スコアを記載してください。
+★重要★: 推奨度の強さを可視化するため、「予想・狙い根拠」の文頭には必ず【推奨Sランク - 95点】、【推奨Aランク - 80点】、【推奨Bランク - 65点】のように、推奨ランク（S/A/B）と100点満点での評価スコアを記載してください。期待値の低い台はBランク以下で表現し、自信のある台はS〜Aランクにしてください。
 
 | 日付 | 機種名 | 台番号 | 予想・狙い根拠 |
 | --- | --- | --- | --- |
-| [次回イベント予測日(YYYY/MM/DD)] | [機種名] | [台番号] | 【推奨[S/A/B]ランク - [点数]点】[具体的な数値や確認情報を交えた狙い根拠] |
+| {tomorrow_date} | [機種名] | [台番号] | 【推奨[S/A/B]ランク - [点数]点】[具体的な数値や確認情報を交えた狙い根拠] |
 """
     
     for model_name in models_to_try:
@@ -645,25 +623,17 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
         ai_ws = wb['【AI】予想・答え合わせ']
         
         # --- PREVENT DUPLICATE RECOMMENDATIONS ---
-        # Scan and remove any existing rows for the prediction target dates to prevent duplicates
+        # Scan and remove any existing rows for tomorrow_date_val to prevent infinite duplicates
         rows_to_delete = []
         for r in range(4, ai_ws.max_row + 1):
             cell_val = ai_ws.cell(r, 1).value
             normalized_cell_val = normalize_date_string(cell_val)
-            
-            for row_data in rows_to_insert:
-                try:
-                    p_date = datetime.datetime.strptime(row_data[0].strip().replace("-", "/"), "%Y/%m/%d")
-                    normalized_p_date = normalize_date_string(p_date)
-                except Exception:
-                    normalized_p_date = normalize_date_string(tomorrow_date_val)
-                    
-                if normalized_cell_val == normalized_p_date:
-                    rows_to_delete.append(r)
-                    break
+            normalized_tomorrow = normalize_date_string(tomorrow_date_val)
+            if normalized_cell_val == normalized_tomorrow:
+                rows_to_delete.append(r)
                 
         if rows_to_delete:
-            print(f"Removing {len(rows_to_delete)} duplicate prediction rows in 【AI】予想・答え合わせ...")
+            print(f"Removing {len(rows_to_delete)} duplicate prediction rows in 【AI】予想・答え合わせ for date {tomorrow_date}...")
             # Delete in reverse order to keep indices correct
             for r in reversed(rows_to_delete):
                 ai_ws.delete_rows(r)
@@ -682,15 +652,8 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
         for i, row_data in enumerate(rows_to_insert):
             curr_r = append_start_row + i
             
-            # Try parsing parsed date from table
-            try:
-                date_str_clean = row_data[0].strip().replace("-", "/")
-                dt_val = datetime.datetime.strptime(date_str_clean, "%Y/%m/%d")
-            except Exception:
-                dt_val = tomorrow_date_val
-                
             # Write date and format
-            dt_cell = ai_ws.cell(curr_r, 1, dt_val)
+            dt_cell = ai_ws.cell(curr_r, 1, tomorrow_date_val)
             dt_cell.number_format = 'yyyy/mm/dd'
             
             ai_ws.cell(curr_r, 2, row_data[1])
@@ -836,7 +799,7 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
         json.dump(rich_summaries, f, ensure_ascii=False, indent=2)
     print(f"Saved rich paragraph summary for Web dashboard to: {RICH_SUMMARIES_FILE}")
 
-def generate_html_dashboard(excel_path, store_name):
+def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
     """
     Reads data from the Excel workbook and generates a fully interactive, lightweight
     HTML dashboard with rich CSS styling, search filters, and statistics.
@@ -872,7 +835,8 @@ def generate_html_dashboard(excel_path, store_name):
                 "rb": int(ws.cell(r, 7).value or 0),
                 "comb_ratio": str(ws.cell(r, 8).value or "-"),
                 "bb_ratio": str(ws.cell(r, 9).value or "-"),
-                "rb_ratio": str(ws.cell(r, 10).value or "-")
+                "rb_ratio": str(ws.cell(r, 10).value or "-"),
+                "score": float(ws.cell(r, 29).value) if ws.cell(r, 29).value is not None and str(ws.cell(r, 29).value).replace('.','',1).isdigit() else 0.0
             })
             
     # 2. Read AI recommendations
@@ -995,11 +959,11 @@ def generate_html_dashboard(excel_path, store_name):
         <!-- Stats Overview Grid -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="p-4 md:p-6 glass rounded-2xl text-center md:text-left">
-                <h3 class="text-slate-400 text-xs font-semibold uppercase tracking-wider">本日総差枚</h3>
+                <h3 class="text-slate-400 text-xs font-semibold uppercase tracking-wider" id="stat-card1-title">本日総差枚</h3>
                 <p id="stat-total-diff" class="text-xl md:text-2xl font-bold mt-2 text-white">0 枚</p>
             </div>
             <div class="p-4 md:p-6 glass rounded-2xl text-center md:text-left">
-                <h3 class="text-slate-400 text-xs font-semibold uppercase tracking-wider">本日平均差枚</h3>
+                <h3 class="text-slate-400 text-xs font-semibold uppercase tracking-wider" id="stat-card2-title">本日平均差枚</h3>
                 <p id="stat-avg-diff" class="text-xl md:text-2xl font-bold mt-2 text-white">0 枚</p>
             </div>
             <div class="p-4 md:p-6 glass rounded-2xl text-center md:text-left">
@@ -1028,7 +992,7 @@ def generate_html_dashboard(excel_path, store_name):
         <section class="p-6 glass rounded-2xl space-y-4">
             <div class="flex items-center gap-2">
                 <span class="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg text-sm">📊</span>
-                <h2 class="text-xl font-bold font-semibold">主要機種の差枚状況ランキング（平均値）</h2>
+                <h2 class="text-xl font-bold font-semibold" id="chart-section-title">主要機種の差枚状況ランキング（平均値）</h2>
             </div>
             <div class="h-80 md:h-96 w-full">
                 <canvas id="chart-machines"></canvas>
@@ -1039,7 +1003,7 @@ def generate_html_dashboard(excel_path, store_name):
         <section class="p-6 glass rounded-2xl space-y-4">
             <div class="flex items-center gap-2">
                 <span class="p-1.5 bg-cyan-500/10 text-cyan-400 rounded-lg text-sm">🎯</span>
-                <h2 class="text-xl font-bold" id="next-event-title">次回イベント推奨台</h2>
+                <h2 class="text-xl font-bold">次回（明日）のAI推奨台</h2>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1083,51 +1047,111 @@ def generate_html_dashboard(excel_path, store_name):
             </div>
         </section>
 
-        <!-- ④ 前回のAI予測答え合わせ (Segmented) -->
-        <section class="p-6 glass rounded-2xl space-y-4">
+        <!-- ④ AI予測答え合わせ ＆ 当日実績分析 -->
+        <section class="p-6 glass rounded-2xl space-y-6">
             <div class="flex items-center gap-2">
                 <span class="p-1.5 bg-amber-500/10 text-amber-400 rounded-lg text-sm">📈</span>
-                <h2 class="text-xl font-bold">前回のAI予測答え合わせ</h2>
+                <h2 class="text-xl font-bold">AI予測答え合わせ ＆ 店舗実績検証</h2>
             </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Juggler Section -->
-                <div class="space-y-2">
-                    <h3 class="text-emerald-400 font-bold text-sm border-b border-emerald-500/30 pb-1">🤡 ジャグラー系 結果</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-xs">
-                            <thead>
-                                <tr class="border-b border-slate-800 text-slate-400">
-                                    <th class="py-2 px-2">台番 (機種)</th>
-                                    <th class="py-2 px-2">差枚</th>
-                                    <th class="py-2 px-2">設定スコア</th>
-                                    <th class="py-2 px-2">結果</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ans-juggler-body" class="divide-y divide-slate-800/50">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
+            <!-- ROW 1: Juggler Answer (Left) vs Juggler High Setting List Score >= 4.5 (Right) -->
+            <div class="space-y-2">
+                <h3 class="text-emerald-400 font-bold text-base border-b border-emerald-500/30 pb-1 flex items-center justify-between">
+                    <span>🤡 ジャグラー系 検証</span>
+                    <span class="text-xs font-normal text-slate-400">（左: AI予想結果 / 右: 実際の高設定挙動台）</span>
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Juggler AI Prediction Answers -->
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <h4 class="text-xs font-semibold text-emerald-300">【AI予測 答え合わせ】</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="border-b border-slate-800 text-slate-400">
+                                        <th class="py-2 px-1">台番 (機種)</th>
+                                        <th class="py-2 px-1 text-right">${'差枚' if has_diff_coins else 'G数'}</th>
+                                        <th class="py-2 px-1 text-center">スコア</th>
+                                        <th class="py-2 px-1 text-center">結果</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ans-juggler-body" class="divide-y divide-slate-800/50">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Juggler Actual High Setting List (Score >= 4.5) -->
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <h4 class="text-xs font-semibold text-amber-300 flex items-center justify-between">
+                            <span>【ジャグラー正解台一覧】(最終スコア 4.5以上)</span>
+                            <span id="jug-high-count" class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">0台</span>
+                        </h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="border-b border-slate-800 text-slate-400">
+                                        <th class="py-2 px-1">台番 (機種)</th>
+                                        <th class="py-2 px-1 text-right">G数 (REG)</th>
+                                        <th class="py-2 px-1 text-right">${'差枚' if has_diff_coins else '合算'}</th>
+                                        <th class="py-2 px-1 text-center">スコア</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="juggler-high-score-body" class="divide-y divide-slate-800/50">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Others/Smaslot Section -->
-                <div class="space-y-2">
-                    <h3 class="text-cyan-400 font-bold text-sm border-b border-cyan-500/30 pb-1">⚡ スマスロ・その他 結果</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-xs">
-                            <thead>
-                                <tr class="border-b border-slate-800 text-slate-400">
-                                    <th class="py-2 px-2">台番 (機種)</th>
-                                    <th class="py-2 px-2">差枚</th>
-                                    <th class="py-2 px-2">設定スコア</th>
-                                    <th class="py-2 px-2">結果</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ans-others-body" class="divide-y divide-slate-800/50">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
+            <!-- ROW 2: Other/Smart Slot Answer (Left) vs Store Top 5 Performance (Right) -->
+            <div class="space-y-2 pt-2 border-t border-slate-800/60">
+                <h3 class="text-cyan-400 font-bold text-base border-b border-cyan-500/30 pb-1 flex items-center justify-between">
+                    <span>⚡ スマスロ・その他 検証 ＆ TOP5</span>
+                    <span class="text-xs font-normal text-slate-400">（左: AI予想結果 / 右: 当日実績TOP5）</span>
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Others AI Prediction Answers -->
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <h4 class="text-xs font-semibold text-cyan-300">【AI予測 答え合わせ】</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="border-b border-slate-800 text-slate-400">
+                                        <th class="py-2 px-1">台番 (機種)</th>
+                                        <th class="py-2 px-1 text-right">${'差枚' if has_diff_coins else 'G数'}</th>
+                                        <th class="py-2 px-1 text-center">スコア</th>
+                                        <th class="py-2 px-1 text-center">結果</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ans-others-body" class="divide-y divide-slate-800/50">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Store Top 5 Performance -->
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <h4 class="text-xs font-semibold text-indigo-300" id="top-5-title">
+                            【${'本日差枚 TOP5' if has_diff_coins else '本日回転数 TOP5'}】
+                        </h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="border-b border-slate-800 text-slate-400">
+                                        <th class="py-2 px-1">順位 / 台番 (機種)</th>
+                                        <th class="py-2 px-1 text-right">G数</th>
+                                        <th class="py-2 px-1 text-right">${'差枚' if has_diff_coins else 'スコア'}</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-performance-body" class="divide-y divide-slate-800/50">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1239,27 +1263,13 @@ def generate_html_dashboard(excel_path, store_name):
                 document.getElementById('ai-summary-text').innerHTML = '<p class="text-slate-500">この日のAI営業総括データはありません。</p>';
             }}
 
-            // 3. Load Predictions for the next event day (Segmented Juggler vs Others & Deduplicated!)
+            // 3. Load Predictions for the next day (Segmented Juggler vs Others & Deduplicated!)
+            const d = new Date(targetDate);
+            d.setDate(d.getDate() + 1);
+            const tomorrowStr = d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+            
             const dedupedPredictions = deduplicatePredictions(rawPredictions);
-            
-            // Find the next available prediction date after targetDate
-            const predictionDates = [...new Set(dedupedPredictions.map(p => p.date))].sort();
-            let nextEventDate = predictionDates.find(dStr => dStr > targetDate);
-            
-            // Fallback: If no future date is found, take the absolute latest prediction date in the array
-            if (!nextEventDate && predictionDates.length > 0) {{
-                nextEventDate = predictionDates[predictionDates.length - 1];
-            }}
-            
-            // Update title dynamically to show the target event date
-            const nextEventTitle = document.getElementById('next-event-title');
-            if (nextEventTitle && nextEventDate) {{
-                nextEventTitle.textContent = `次回（${{nextEventDate}}）のAI推奨狙い目台`;
-            }} else if (nextEventTitle) {{
-                nextEventTitle.textContent = '次回イベント推奨台';
-            }}
-            
-            const filteredPredictions = nextEventDate ? dedupedPredictions.filter(p => p.date === nextEventDate) : [];
+            const filteredPredictions = dedupedPredictions.filter(p => p.date === tomorrowStr);
             
             const predJugglerBody = document.getElementById('pred-juggler-body');
             const predOthersBody = document.getElementById('pred-others-body');
@@ -1365,6 +1375,61 @@ def generate_html_dashboard(excel_path, store_name):
                     tr.innerHTML = renderAnswerRow(a, false);
                     ansOthersBody.appendChild(tr);
                 }});
+            }}
+
+            // 5. Populate Juggler High Setting List (Score >= 4.5) for targetDate
+            const jugHighScoreBody = document.getElementById('juggler-high-score-body');
+            const jugHighCountSpan = document.getElementById('jug-high-count');
+            if (jugHighScoreBody) {{
+                jugHighScoreBody.innerHTML = '';
+                const jugHighRecords = targetRecords.filter(r => isJugglerMachine(r.name) && (r.score >= 4.5)).sort((a, b) => b.score - a.score);
+                if (jugHighCountSpan) jugHighCountSpan.textContent = `${{jugHighRecords.length}}台`;
+                
+                if (jugHighRecords.length === 0) {{
+                    jugHighScoreBody.innerHTML = '<tr><td colspan="4" class="py-3 text-center text-slate-500">該当する高設定挙動台(4.5以上)はありません。</td></tr>';
+                }} else {{
+                    jugHighRecords.forEach(r => {{
+                        const tr = document.createElement('tr');
+                        tr.className = 'hover:bg-slate-800/30';
+                        const scoreVal = r.score ? parseFloat(r.score).toFixed(1) : '-';
+                        const diffText = HAS_DIFF_COINS ? (r.diff >= 0 ? '+' + r.diff : r.diff) + ' 枚' : (r.comb_ratio || '-');
+                        const diffClass = HAS_DIFF_COINS ? (r.diff >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400') : 'text-slate-300';
+                        
+                        tr.innerHTML = `
+                            <td class="py-2 px-1 font-semibold text-slate-200">${{r.number}}番 <span class="text-[10px] text-slate-400 font-normal">(${{r.name}})</span></td>
+                            <td class="py-2 px-1 text-right text-slate-300">${{(r.games || 0).toLocaleString()}}G <span class="text-[10px] text-slate-400">(${{r.rb_ratio || '-'}})</span></td>
+                            <td class="py-2 px-1 text-right ${{diffClass}}">${{diffText}}</td>
+                            <td class="py-2 px-1 text-center font-bold text-amber-400">${{scoreVal}} 🌟</td>
+                        `;
+                        jugHighScoreBody.appendChild(tr);
+                    }});
+                }}
+            }}
+
+            // 6. Populate Store Top 5 Performance (Diff Coins or Games/Score)
+            const topPerfBody = document.getElementById('top-performance-body');
+            if (topPerfBody) {{
+                topPerfBody.innerHTML = '';
+                const topRecords = [...targetRecords].sort((a, b) => HAS_DIFF_COINS ? (b.diff - a.diff) : (b.games - a.games)).slice(0, 5);
+                
+                if (topRecords.length === 0) {{
+                    topPerfBody.innerHTML = '<tr><td colspan="3" class="py-3 text-center text-slate-500">実績データがありません。</td></tr>';
+                }} else {{
+                    topRecords.forEach((r, idx) => {{
+                        const tr = document.createElement('tr');
+                        tr.className = 'hover:bg-slate-800/30';
+                        const rankBadge = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : (idx === 2 ? '🥉' : `${{idx + 1}}.`));
+                        const valText = HAS_DIFF_COINS ? ((r.diff >= 0 ? '+' : '') + r.diff.toLocaleString() + ' 枚') : (r.score ? r.score.toFixed(1) + ' 🌟' : '-');
+                        const valClass = HAS_DIFF_COINS ? (r.diff >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400') : 'text-amber-400 font-bold';
+                        
+                        tr.innerHTML = `
+                            <td class="py-2 px-1 font-semibold text-slate-200">${{rankBadge}} ${{r.number}}番 <span class="text-[10px] text-slate-400 font-normal">(${{r.name}})</span></td>
+                            <td class="py-2 px-1 text-right text-slate-300">${{(r.games || 0).toLocaleString()}} G</td>
+                            <td class="py-2 px-1 text-right ${{valClass}}">${{valText}}</td>
+                        `;
+                        topPerfBody.appendChild(tr);
+                    }});
+                }}
             }}
 
             // 5. Populate Raw Data Table
@@ -1637,7 +1702,7 @@ def main():
     write_ai_results_to_excel(excel_file, target_date, ai_text)
     
     # 4. Generate the fully interactive HTML Dashboard for instant check
-    generate_html_dashboard(excel_file, store_name)
+    generate_html_dashboard(excel_file, store_name, has_diff_coins=store_config.get('has_diff_coins', False))
     
     # 5. Automatically deploy to GitHub Pages
     deploy_to_github()
