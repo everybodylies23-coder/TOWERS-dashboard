@@ -585,58 +585,60 @@ def run_gemini_analysis(api_key, context, target_date):
 
 def write_ai_results_to_excel(excel_path, target_date, ai_text):
     d_obj = datetime.datetime.strptime(target_date, "%Y/%m/%d")
-    tomorrow_date = (d_obj + datetime.timedelta(days=1)).strftime("%Y/%m/%d")
-    tomorrow_date_val = datetime.datetime.strptime(tomorrow_date, "%Y/%m/%d")
     
     wb = openpyxl.load_workbook(excel_path, data_only=False)
     
     # 1. Parse AI recommendations from Markdown table
-    table_pattern = r'\|?\s*(?:\d{4}/\d{2}/\d{2})\s*\|.*'
-    table_lines = re.findall(table_pattern, ai_text)
-    
     rows_to_insert = []
-    for line in table_lines:
-        cells = [c.strip() for c in line.split("|")]
-        if len(cells) > 0 and cells[0] == "":
-            cells.pop(0)
-        if len(cells) > 0 and cells[-1] == "":
-            cells.pop()
-            
-        if len(cells) >= 4:
-            date_str = cells[0]
-            machine_name = cells[1]
-            try:
-                machine_num = int(cells[2])
-            except ValueError:
-                machine_num = cells[2]
-            reason = cells[3]
-            
-            if "機種名" in machine_name or "---" in machine_name:
-                continue
+    lines = ai_text.splitlines()
+    for line in lines:
+        if "|" in line:
+            cells = [c.strip() for c in line.split("|")]
+            if len(cells) > 0 and cells[0] == "":
+                cells.pop(0)
+            if len(cells) > 0 and cells[-1] == "":
+                cells.pop()
                 
-            rows_to_insert.append((date_str, machine_name, machine_num, reason))
-            
+            if len(cells) >= 4:
+                date_str = cells[0]
+                machine_name = cells[1]
+                try:
+                    machine_num = int(cells[2])
+                except ValueError:
+                    machine_num = cells[2]
+                reason = cells[3]
+                
+                if "機種名" in machine_name or "---" in machine_name or "日付" in date_str:
+                    continue
+                    
+                rows_to_insert.append((date_str, machine_name, machine_num, reason))
+                
     if rows_to_insert:
         ai_ws = wb['【AI】予想・答え合わせ']
         
+        first_date_str = rows_to_insert[0][0]
+        try:
+            pred_target_dt = datetime.datetime.strptime(first_date_str, "%Y/%m/%d")
+        except ValueError:
+            pred_target_dt = d_obj + datetime.timedelta(days=1)
+            
+        pred_target_str = pred_target_dt.strftime("%Y/%m/%d")
+        
         # --- PREVENT DUPLICATE RECOMMENDATIONS ---
-        # Scan and remove any existing rows for tomorrow_date_val to prevent infinite duplicates
         rows_to_delete = []
         for r in range(4, ai_ws.max_row + 1):
             cell_val = ai_ws.cell(r, 1).value
             normalized_cell_val = normalize_date_string(cell_val)
-            normalized_tomorrow = normalize_date_string(tomorrow_date_val)
-            if normalized_cell_val == normalized_tomorrow:
+            normalized_pred_target = normalize_date_string(pred_target_dt)
+            if normalized_cell_val == normalized_pred_target:
                 rows_to_delete.append(r)
                 
         if rows_to_delete:
-            print(f"Removing {len(rows_to_delete)} duplicate prediction rows in 【AI】予想・答え合わせ for date {tomorrow_date}...")
-            # Delete in reverse order to keep indices correct
+            print(f"Removing {len(rows_to_delete)} duplicate prediction rows in 【AI】予想・答え合わせ for date {pred_target_str}...")
             for r in reversed(rows_to_delete):
                 ai_ws.delete_rows(r)
         # ------------------------------------------
         
-        # Recalculate last row after deletion
         last_data_row = 3
         for r in range(ai_ws.max_row, 3, -1):
             val = ai_ws.cell(r, 1).value
@@ -645,12 +647,16 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
                 break
         append_start_row = last_data_row + 1
             
-        print(f"Writing {len(rows_to_insert)} recommendation rows starting at Row {append_start_row}...")
+        print(f"Writing {len(rows_to_insert)} recommendation rows for target date {pred_target_str} starting at Row {append_start_row}...")
         for i, row_data in enumerate(rows_to_insert):
             curr_r = append_start_row + i
             
-            # Write date and format
-            dt_cell = ai_ws.cell(curr_r, 1, tomorrow_date_val)
+            try:
+                r_dt = datetime.datetime.strptime(row_data[0], "%Y/%m/%d")
+            except ValueError:
+                r_dt = pred_target_dt
+                
+            dt_cell = ai_ws.cell(curr_r, 1, r_dt)
             dt_cell.number_format = 'yyyy/mm/dd'
             
             ai_ws.cell(curr_r, 2, row_data[1])
@@ -659,10 +665,11 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
     else:
         print("Warning: Could not parse recommendation table from AI response.")
         
-    # 2. PERFORM PRE-CALCULATED LOOKUPS (Excel speed-up)
+    # 2. PERFORM PRE-CALCULATED LOOKUPS & AUTOMATIC UNMATCHED PREDICTION AUTO-LINKING
     print("Pre-calculating answer key data (lookup actual results)...")
     data_ws = wb['【データ】蓄積用']
     accumulated_db = {}
+    data_dates = set()
     for r in range(2, data_ws.max_row + 1):
         date_val = data_ws.cell(r, 1).value
         mach_num = data_ws.cell(r, 3).value
@@ -672,6 +679,7 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
         
         if date_val is not None:
             date_str = normalize_date_string(date_val)
+            data_dates.add(date_str)
             try:
                 m_num = int(str(mach_num).strip())
                 accumulated_db[(date_str, m_num)] = (g_games, diff_coins, setting_score)
@@ -679,8 +687,21 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
                 continue
                 
     ai_ws = wb['【AI】予想・答え合わせ']
+    
+    current_target_norm = normalize_date_string(d_obj)
+    for r in range(4, ai_ws.max_row + 1):
+        pred_date_val = ai_ws.cell(r, 1).value
+        pred_g_val = ai_ws.cell(r, 5).value
+        pred_diff_val = ai_ws.cell(r, 6).value
+        
+        if pred_date_val is not None and (pred_g_val is None or pred_g_val == "") and (pred_diff_val is None or pred_diff_val == ""):
+            pred_date_norm = normalize_date_string(pred_date_val)
+            if pred_date_norm not in data_dates and pred_date_norm <= current_target_norm:
+                print(f"Auto-linking un-answered prediction Row {r} (was {pred_date_norm}) to current result date {current_target_norm}!")
+                dt_c = ai_ws.cell(r, 1, d_obj)
+                dt_c.number_format = 'yyyy/mm/dd'
+
     rewritten_count = 0
-    # Scan all prediction rows (4 to max_row) and replace formulas with static values
     for r in range(4, ai_ws.max_row + 1):
         date_val = ai_ws.cell(r, 1).value
         mach_val = ai_ws.cell(r, 3).value
@@ -694,107 +715,68 @@ def write_ai_results_to_excel(excel_path, target_date, ai_text):
                 if key in accumulated_db:
                     g_games, diff_coins, setting_score = accumulated_db[key]
                     
-                    try:
-                        coins_int = int(str(diff_coins).replace(",", "").replace("+", "").strip())
-                    except ValueError:
-                        coins_int = 0
-                        
-                    score_val = 0
-                    if setting_score is not None and setting_score != "":
-                        try:
-                            score_val = float(str(setting_score).strip())
-                        except ValueError:
-                            pass
-                            
-                    # Determine status (〇/×)
-                    if "ジャグラー" in m_name:
-                        status = "〇" if (score_val >= 4.5 and coins_int >= 500) else "×"
+                    ai_ws.cell(r, 5, g_games)
+                    ai_ws.cell(r, 6, diff_coins)
+                    ai_ws.cell(r, 7, setting_score)
+                    
+                    is_jug = any(k in m_name for k in ['ジャグラー', 'ジャグ', 'マイJ', 'ファンキー', 'アイム', 'ゴーゴー', 'ハッピー', 'ミラクル'])
+                    if is_jug:
+                        if g_games is None or g_games == 0 or g_games == "":
+                            res = "-"
+                        else:
+                            try:
+                                sc_v = float(setting_score) if setting_score is not None else 0
+                            except ValueError:
+                                sc_v = 0
+                            try:
+                                df_v = int(diff_coins) if diff_coins is not None else -9999
+                            except ValueError:
+                                df_v = -9999
+                            res = "〇" if (sc_v >= 4.5 and df_v >= 500) else "×"
                     else:
-                        status = "〇" if coins_int >= 1000 else "×"
+                        try:
+                            df_v = int(diff_coins) if diff_coins is not None else -9999
+                        except ValueError:
+                            df_v = -9999
+                        res = "〇" if (df_v >= 1000) else "×"
                         
-                    safe_write_cell(ai_ws, r, 5, g_games)
-                    safe_write_cell(ai_ws, r, 6, diff_coins)
-                    safe_write_cell(ai_ws, r, 7, setting_score if setting_score is not None else "")
-                    safe_write_cell(ai_ws, r, 8, status)
-                    ai_ws.cell(r, 1).number_format = 'yyyy/mm/dd'
+                    ai_ws.cell(r, 8, res)
                     rewritten_count += 1
             except ValueError:
                 continue
+
     print(f"Pre-calculated & optimized {rewritten_count} cells in 【AI】予想・答え合わせ.")
 
-    # 3. Write summary narrative into 【AI】総括 sheet
-    sum_sheet_name = '【AI】総括'
-    actual_sheet_name = None
-    for name in wb.sheetnames:
-        clean_name = name.replace(" ", "").replace("　", "")
-        if "AI" in clean_name and "総括" in clean_name:
-            actual_sheet_name = name
-            break
-            
-    if actual_sheet_name and actual_sheet_name in wb.sheetnames:
-        sum_ws = wb[actual_sheet_name]
-        print(f"Found existing summary sheet: '{actual_sheet_name}'")
+    # 3. Create or Update Summary sheet
+    summary_ws = None
+    if '【AI】総括' in wb.sheetnames:
+        summary_ws = wb['【AI】総括']
     else:
-        sum_ws = wb.create_sheet(sum_sheet_name)
-        print(f"Created new summary sheet: '{sum_sheet_name}'")
+        summary_ws = wb.create_sheet('【AI】総括')
+        summary_ws.cell(1, 1, "日付 (結果日)")
+        summary_ws.cell(1, 2, "AIからの総括 (コピペ用)")
         
-    # Find actual max row in Col E or F
-    real_max_sum_row = 1
-    for r in range(sum_ws.max_row, 0, -1):
-        val_e = sum_ws.cell(r, 5).value
-        val_f = sum_ws.cell(r, 6).value
-        if not is_empty_or_formula(val_e) or not is_empty_or_formula(val_f):
-            real_max_sum_row = r
+    last_sum_r = 1
+    for r in range(summary_ws.max_row, 1, -1):
+        if not is_empty_or_formula(summary_ws.cell(r, 1).value):
+            last_sum_r = r
             break
             
-    next_sum_row = real_max_sum_row + 2
-    if real_max_sum_row == 1 and sum_ws.cell(1, 5).value is None and sum_ws.cell(1, 6).value is None:
-        next_sum_row = 1
-        
-    # Clean the summary text for Excel (strictly 1 line, no paragraphs)
-    text_lines = []
-    for line in ai_text.split("\n"):
-        line_strip = line.strip()
-        if line_strip.startswith("|") or line_strip.startswith("---") or line_strip.startswith("=== AI"):
-            continue
-        if line_strip:
-            text_lines.append(line_strip)
-    single_line_summary = "".join(text_lines)
-    
-    # Write target date (HTML date) into Column E (5) and formatted text in F (6)
-    dt_sum_cell = safe_write_cell(sum_ws, next_sum_row, 5, d_obj)
-    if dt_sum_cell:
-        dt_sum_cell.number_format = 'yyyy/mm/dd'
-        
-    safe_write_cell(sum_ws, next_sum_row, 6, single_line_summary)
-    
-    safe_save_workbook(wb, excel_path)
-    print(f"AI Analysis results written successfully into sheets.")
-    
-    # 4. Save the RAW rich formatted text (with paragraphs) to a JSON file
-    rich_summaries = {}
-    if os.path.exists(RICH_SUMMARIES_FILE):
-        try:
-            with open(RICH_SUMMARIES_FILE, "r", encoding="utf-8") as f:
-                rich_summaries = json.load(f)
-        except Exception:
-            rich_summaries = {}
+    found_date_row = None
+    for r in range(2, last_sum_r + 1):
+        c_val = summary_ws.cell(r, 1).value
+        if normalize_date_string(c_val) == normalize_date_string(d_obj):
+            found_date_row = r
+            break
             
-    # Clean markdown tables only, preserving paragraphs and formatting
-    clean_lines = []
-    for line in ai_text.split("\n"):
-        line_strip = line.strip()
-        if line_strip.startswith("|") or line_strip.startswith("---"):
-            continue
-        clean_lines.append(line)
-        
-    # Normalize target_date to match standard format
-    norm_target_date = normalize_date_string(target_date)
-    rich_summaries[norm_target_date] = "\n".join(clean_lines).strip()
+    target_sum_row = found_date_row if found_date_row else last_sum_r + 1
+    dt_c = summary_ws.cell(target_sum_row, 1, d_obj)
+    dt_c.number_format = 'yyyy/mm/dd'
+    summary_ws.cell(target_sum_row, 2, ai_text)
     
-    with open(RICH_SUMMARIES_FILE, "w", encoding="utf-8") as f:
-        json.dump(rich_summaries, f, ensure_ascii=False, indent=2)
-    print(f"Saved rich paragraph summary for Web dashboard to: {RICH_SUMMARIES_FILE}")
+    wb.save(excel_path)
+    wb.close()
+    print("AI Analysis results written successfully into sheets.")
 
 def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
     """
