@@ -374,14 +374,18 @@
             document.getElementById('stat-avg-diff').textContent = avgDiff.toLocaleString() + ' 枚';
             document.getElementById('stat-win-rate').textContent = winRate + '%';
 
-            // 2. Load AI Summary text (Markdown render!)
+            // 2. Load AI Summary text (Markdown render & strip ④, ⑤, ⑥ to prevent duplication!)
             const summaryObj = rawSummaries.find(s => s.date === targetDate);
-            if (summaryObj) {
-                document.getElementById('ai-summary-text').innerHTML = marked.parse(summaryObj.text);
+            if (summaryObj && summaryObj.text) {
+                let cleanText = summaryObj.text;
+                const cutoffIndex = cleanText.search(/(④|4\.|⑤|5\.|⑥|6\.|AI独自の次回推奨狙い台)/);
+                if (cutoffIndex !== -1) {
+                    cleanText = cleanText.substring(0, cutoffIndex).trim();
+                }
+                document.getElementById('ai-summary-text').innerHTML = marked.parse(cleanText);
             } else {
                 document.getElementById('ai-summary-text').innerHTML = '<p class="text-slate-500">この日のAI営業総括データはありません。</p>';
             }
-
             // 3. Load Predictions for the next event day (Segmented Juggler vs Others & Deduplicated!)
             const dedupedPredictions = deduplicatePredictions(rawPredictions);
             const predictionDates = [...new Set(dedupedPredictions.map(p => p.date))].sort();
@@ -408,14 +412,16 @@
             const otherPredictions = filteredPredictions.filter(p => !isJugglerMachine(p.name)).slice(0, 5);
             
             if (jugPredictions.length === 0) {
-                predJugglerBody.innerHTML = '<tr><td colspan="3" class="py-3 text-center text-slate-500">ジャグラー推奨台はありません。</td></tr>';
+                predJugglerBody.innerHTML = '<tr><td colspan="4" class="py-3 text-center text-slate-500">ジャグラー推奨台はありません。</td></tr>';
             } else {
                 jugPredictions.forEach(p => {
                     const tr = document.createElement('tr');
                     tr.className = 'hover:bg-slate-800/30';
+                    const rankBadge = extractRankBadge(p.reason);
                     tr.innerHTML = `
                         <td class="py-2.5 px-2 font-semibold text-slate-200">${p.name}</td>
                         <td class="py-2.5 px-2 text-emerald-400 font-bold font-mono">${p.number}</td>
+                        <td class="py-2.5 px-2 text-center">${rankBadge}</td>
                         <td class="py-2.5 px-2 text-xs text-slate-300">${p.reason}</td>
                     `;
                     predJugglerBody.appendChild(tr);
@@ -423,14 +429,16 @@
             }
 
             if (otherPredictions.length === 0) {
-                predOthersBody.innerHTML = '<tr><td colspan="3" class="py-3 text-center text-slate-500">スマスロ・その他推奨台はありません。</td></tr>';
+                predOthersBody.innerHTML = '<tr><td colspan="4" class="py-3 text-center text-slate-500">スマスロ・その他推奨台はありません。</td></tr>';
             } else {
                 otherPredictions.forEach(p => {
                     const tr = document.createElement('tr');
                     tr.className = 'hover:bg-slate-800/30';
+                    const rankBadge = extractRankBadge(p.reason);
                     tr.innerHTML = `
                         <td class="py-2.5 px-2 font-semibold text-slate-200">${p.name}</td>
                         <td class="py-2.5 px-2 text-cyan-400 font-bold font-mono">${p.number}</td>
+                        <td class="py-2.5 px-2 text-center">${rankBadge}</td>
                         <td class="py-2.5 px-2 text-xs text-slate-300">${p.reason}</td>
                     `;
                     predOthersBody.appendChild(tr);
@@ -475,11 +483,13 @@
                 
                 const resultBadge = finalResult === '〇' ? '<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] rounded-full font-bold">〇</span>' : 
                                    (finalResult === '×' ? '<span class="px-2 py-0.5 bg-rose-500/20 text-rose-400 text-[10px] rounded-full font-bold">×</span>' : '-');
+                const rankBadge = extractRankBadge(a.reason);
                 return `
                     <td class="py-2.5 px-2 text-slate-200 font-semibold">${a.number}番 (${a.name})</td>
-                    <td class="py-2.5 px-2 font-mono ${diffClass}">${diffText}</td>
-                    <td class="py-2.5 px-2 text-slate-300 font-mono">${scoreText}</td>
-                    <td class="py-2.5 px-2">${resultBadge}</td>
+                    <td class="py-2.5 px-2 text-center">${rankBadge}</td>
+                    <td class="py-2.5 px-2 font-mono ${diffClass} text-right">${diffText}</td>
+                    <td class="py-2.5 px-2 text-slate-300 font-mono text-center">${scoreText}</td>
+                    <td class="py-2.5 px-2 text-center">${resultBadge}</td>
                 `;
             };
 
