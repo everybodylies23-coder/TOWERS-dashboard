@@ -1437,9 +1437,7 @@ def generate_html_dashboard(excel_path, store_name, has_diff_coins=False):
                 if (index4 !== -1 && index6 !== -1 && index6 > index4) {{
                     const part1 = cleanText.substring(0, index4).trim();
                     const part2 = cleanText.substring(index6).trim();
-                    cleanText = part1 + "
-
-" + part2;
+                    cleanText = part1 + String.fromCharCode(10, 10) + part2;
                 }} else if (index4 !== -1) {{
                     cleanText = cleanText.substring(0, index4).trim();
                 }}
