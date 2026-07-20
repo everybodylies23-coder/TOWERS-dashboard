@@ -414,6 +414,7 @@ def prepare_ai_context(excel_path, target_date):
     unique_dates = sorted(list(set(r['date'] for r in all_records)))
     recent_5_dates = unique_dates[-5:] if len(unique_dates) >= 5 else unique_dates
 
+    # --- Section 1: End Digit Matrix ---
     tail_stats = {}
     for digit in range(10):
         tail_stats[digit] = {'total_diff': 0, 'total_count': 0, 'wins': 0, 'recent_diffs': []}
@@ -440,6 +441,7 @@ def prepare_ai_context(excel_path, target_date):
         rec_str = " | ".join(st['recent_diffs'])
         tail_matrix_lines.append(f"末尾【{digit}】: 平均差枚 {avg:+d}枚 | 勝率 {w_rate}% ({st['wins']}/{st['total_count']}) | 直近推移: {rec_str}")
 
+    # --- Section 2: Position Tendency Rates ---
     position_lines = []
     corner_recs = [r for r in all_records if r['machine_number'] % 10 in (1, 0, 5, 6)]
     corner_win = round((sum(1 for r in corner_recs if r['diff_coins'] > 0) / len(corner_recs)) * 100) if corner_recs else 0
@@ -451,6 +453,7 @@ def prepare_ai_context(excel_path, target_date):
     other_avg = round(sum(r['diff_coins'] for r in other_recs) / len(other_recs)) if other_recs else 0
     position_lines.append(f"- 中央/一般台: 勝率 {other_win}% | 平均差枚 {other_avg:+d}枚")
 
+    # --- Section 3: Machine Brand Strength ---
     machine_summary = {}
     for r in all_records:
         name = r['machine_name']
@@ -466,6 +469,7 @@ def prepare_ai_context(excel_path, target_date):
         avg = round(st['total_diff'] / st['count']) if st['count'] > 0 else 0
         mach_lines.append(f"- {name}: 平均差枚 {avg:+d}枚 (全{st['count']}台) | 高設定/大爆発回数: {st['high_score_count']}回")
 
+    # --- Section 4: Machine History Matrix ---
     mach_history_lines = []
     unique_mach_nums = sorted(list(set(r['machine_number'] for r in all_records)))
     for m_num in unique_mach_nums:
@@ -477,6 +481,7 @@ def prepare_ai_context(excel_path, target_date):
         hist_str = ", ".join([f"{r['date'][-5:]}:G{r['g_games']}/差{r['diff_coins']:+d}/点{r['score']}" for r in m_recs])
         mach_history_lines.append(f"台#{m_num} ({m_name}): {hist_str}")
 
+    # --- Section 5: High Setting History DB ---
     high_setting_db_lines = []
     for m_num in unique_mach_nums:
         m_recs = sorted([r for r in all_records if r['machine_number'] == m_num], key=lambda x: x['date'])
@@ -486,6 +491,7 @@ def prepare_ai_context(excel_path, target_date):
             events_since = len([r for r in m_recs if r['date'] > last_high_date])
             high_setting_db_lines.append(f"台#{m_num} ({m_recs[-1]['machine_name']}): 前回高設定 {last_high_date} | 経過イベント数 {events_since}回")
 
+    # --- Section 6: AI Prediction Review History & Penalty Tracker ---
     pred_history_lines = []
     penalty_tracker = {}
     if "【AI】予想・答え合わせ" in wb.sheetnames:
@@ -529,6 +535,7 @@ def prepare_ai_context(excel_path, target_date):
         if track['consecutive_losses'] >= 2:
             consecutive_loss_warnings.append(f"⚠️ 台#{num}: 直近{track['consecutive_losses']}回連続で「×」判定中！(累計{track['wins']}/{track['total']}的中) ➔ 同一根拠での再推奨はペナルティ(-10〜-20点)適用！")
 
+    # --- Section 7: User Confirmation Info ---
     confirm_data = []
     if "確認情報" in wb.sheetnames:
         confirm_ws = wb["確認情報"]
@@ -541,6 +548,23 @@ def prepare_ai_context(excel_path, target_date):
                 confirm_data.append(f"  - {r_str}")
     if not confirm_data:
         confirm_data.append("  (入力情報なし - データの周期性・ローテーション分析を主軸としてください)")
+
+    # --- Section 8: Today's Highlighted Results (Juggler High Score & TOP 5 Performance) ---
+    today_norm = str(target_date).strip().replace("-", "/")
+    today_recs = [r for r in all_records if r['date'] == today_norm]
+    if not today_recs and unique_dates:
+        today_recs = [r for r in all_records if r['date'] == unique_dates[-1]]
+
+    jug_keywords = ['ジャグラー', 'ジャグ', 'マイJ', 'ファンキー', 'アイム', 'ゴーゴー', 'ハッピー', 'ミラクル']
+    juggler_high_scores = [r for r in today_recs if any(k in r['machine_name'] for k in jug_keywords) and r['score'] >= 4.5]
+    juggler_high_score_lines = []
+    for r in juggler_high_scores:
+        juggler_high_score_lines.append(f"🌟 台#{r['machine_number']} ({r['machine_name']}): 最終スコア {r['score']} | G数 {r['g_games']}G | 差枚 {r['diff_coins']:+d}枚 | BB:{r['bb']} RB:{r['rb']}")
+
+    top5_recs = sorted(today_recs, key=lambda x: x['diff_coins'], reverse=True)[:5]
+    top5_lines = []
+    for i, r in enumerate(top5_recs, 1):
+        top5_lines.append(f"🏆 第{i}位 台#{r['machine_number']} ({r['machine_name']}): 差枚 {r['diff_coins']:+d}枚 | G数 {r['g_games']}G | スコア {r['score']}")
 
     wb.close()
 
@@ -569,6 +593,13 @@ def prepare_ai_context(excel_path, target_date):
 
 ■ セクション7: ユーザー入力の店舗確認情報（公約・示唆・SNS等の一次情報）
 {chr(10).join(confirm_data)}
+
+■ セクション8: 本日（{target_date}）の注目実績（ダッシュボード連動表示）
+【🌟 ジャグラー正解台一覧 (最終スコア4.5以上)】
+{chr(10).join(juggler_high_score_lines) if juggler_high_score_lines else "（本日スコア4.5以上のジャグラー該当台なし）"}
+
+【🏆 本日店舗実績 TOP 5 (差枚TOP5)】
+{chr(10).join(top5_lines) if top5_lines else "（実績データなし）"}
 """
     return context_text
 
