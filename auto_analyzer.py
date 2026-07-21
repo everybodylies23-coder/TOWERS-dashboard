@@ -365,6 +365,36 @@ def update_excel_data(excel_path, target_date, parsed_data):
     safe_save_workbook(wb, excel_path)
     print("Excel file successfully updated with new raw data and formulas.")
 
+def extract_excel_specific_days_setting(excel_path):
+    """
+    Extracts custom specific day end-digit settings from 【分析】高設定履歴DB Sheet Row 2.
+    Example output: "末尾5, 末尾6, ゾロ目"
+    """
+    try:
+        wb = openpyxl.load_workbook(excel_path, data_only=True)
+        if "【分析】高設定履歴DB" in wb.sheetnames:
+            ws = wb["【分析】高設定履歴DB"]
+            for r in range(1, 10):
+                c1_val = str(ws.cell(r, 1).value or '')
+                if "特定日末尾" in c1_val or "特定日" in c1_val:
+                    settings = []
+                    for col in range(2, ws.max_column + 1):
+                        val = ws.cell(r, col).value
+                        if val is not None and str(val).strip() != '':
+                            s_str = str(val).strip()
+                            if s_str.isdigit():
+                                settings.append(f"末尾{s_str}")
+                            else:
+                                settings.append(s_str)
+                    wb.close()
+                    if settings:
+                        return ", ".join(settings)
+        wb.close()
+    except Exception as e:
+        print(f"Notice: Could not read specific days setting from Excel: {e}")
+    return "特定末尾日、日ゾロ目の日、月日ゾロ目の日"
+
+
 def prepare_ai_context(excel_path, target_date):
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     data_ws = wb['【データ】蓄積用']
@@ -604,7 +634,12 @@ def prepare_ai_context(excel_path, target_date):
     return context_text
 
 
-def run_gemini_analysis(api_key, context, target_date):
+def run_gemini_analysis(api_key, context, target_date, excel_file=None):
+    if excel_file and os.path.exists(excel_file):
+        specific_days_rule = extract_excel_specific_days_setting(excel_file)
+    else:
+        specific_days_rule = "特定末尾日、日ゾロ目の日、月日ゾロ目の日"
+
     import google.generativeai as genai
     genai.configure(api_key=api_key)
     
@@ -1848,14 +1883,33 @@ def main():
     filepath = os.path.join("data_input", selected_file)
     
     filename_wo_ext = os.path.splitext(selected_file)[0]
-    match = re.match(r'^([^_ 　-]+)[_ 　-]+(\d{8})$', filename_wo_ext)
-    if not match:
-        print(f"\nCould not determine Store and Date from filename '{selected_file}'.")
-        store_name = input("Enter Store Name (e.g. A店): ")
-        target_date_raw = input("Enter Date (e.g. 20260714): ")
+    
+    # 1. Automatic Store Name Detection
+    store_name = None
+    registered_stores = list(config.get("STORES", {}).keys())
+    
+    # Check if filename contains any registered store key
+    for s_key in registered_stores:
+        if s_key.lower() in filename_wo_ext.lower():
+            store_name = s_key
+            break
+            
+    # Fallback to single registered store if only 1 exists in config
+    if not store_name and len(registered_stores) == 1:
+        store_name = registered_stores[0]
+
+    # 2. Automatic Date Detection (Search for 8-digit date YYYYMMDD anywhere in filename)
+    date_match = re.search(r'(\d{8})', filename_wo_ext)
+    if date_match:
+        target_date_raw = date_match.group(1)
     else:
-        store_name = match.group(1)
-        target_date_raw = match.group(2)
+        target_date_raw = None
+
+    # Fallback prompt only if detection fails completely
+    if not store_name:
+        store_name = input("Enter Store Name (e.g. 123 / トワーズ大和深見): ")
+    if not target_date_raw:
+        target_date_raw = input("Enter Date (e.g. 20260401): ")
         
     try:
         target_date = datetime.datetime.strptime(target_date_raw, "%Y%m%d").strftime("%Y/%m/%d")
@@ -1889,7 +1943,7 @@ def main():
     context = prepare_ai_context(excel_file, target_date)
     
     print("\nRunning Gemini AI analysis...")
-    ai_text = run_gemini_analysis(api_key, context, target_date)
+    ai_text = run_gemini_analysis(api_key, context, target_date, excel_file)
     
     ref_out = os.path.join("data_input", f"{filename_wo_ext}_ai_report.md")
     with open(ref_out, "w", encoding="utf-8") as f:
