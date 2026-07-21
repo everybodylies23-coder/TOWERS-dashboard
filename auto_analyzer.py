@@ -97,6 +97,38 @@ def normalize_date_string(date_val):
         return f"{match.group(1)}/{int(match.group(2)):02d}/{int(match.group(3)):02d}"
     return date_str
 
+def extract_excel_specific_days_setting(excel_path):
+    """
+    Extracts custom specific day end-digit settings from 【分析】高設定履歴DB Sheet Row 2.
+    Example output: "末尾1, ゾロ目"
+    """
+    try:
+        if not excel_path or not os.path.exists(excel_path):
+            return "末尾1"
+        wb = openpyxl.load_workbook(excel_path, data_only=True)
+        if "【分析】高設定履歴DB" in wb.sheetnames:
+            ws = wb["【分析】高設定履歴DB"]
+            for r in range(1, 10):
+                c1_val = str(ws.cell(r, 1).value or '')
+                if "特定日末尾" in c1_val or "特定日" in c1_val:
+                    settings = []
+                    for col in range(2, ws.max_column + 1):
+                        val = ws.cell(r, col).value
+                        if val is not None and str(val).strip() != '':
+                            s_str = str(val).strip()
+                            if s_str.isdigit():
+                                settings.append(f"末尾{s_str}")
+                            else:
+                                settings.append(s_str)
+                    wb.close()
+                    if settings:
+                        return ", ".join(settings)
+        wb.close()
+    except Exception as e:
+        print(f"Notice: Could not read specific days setting from Excel: {e}")
+    return "末尾1"
+
+
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         print(f"Error: {CONFIG_FILE} not found. Please create it first.")
@@ -364,36 +396,6 @@ def update_excel_data(excel_path, target_date, parsed_data):
     print(f"Writing complete. Saving Excel file...")
     safe_save_workbook(wb, excel_path)
     print("Excel file successfully updated with new raw data and formulas.")
-
-def extract_excel_specific_days_setting(excel_path):
-    """
-    Extracts custom specific day end-digit settings from 【分析】高設定履歴DB Sheet Row 2.
-    Example output: "末尾5, 末尾6, ゾロ目"
-    """
-    try:
-        wb = openpyxl.load_workbook(excel_path, data_only=True)
-        if "【分析】高設定履歴DB" in wb.sheetnames:
-            ws = wb["【分析】高設定履歴DB"]
-            for r in range(1, 10):
-                c1_val = str(ws.cell(r, 1).value or '')
-                if "特定日末尾" in c1_val or "特定日" in c1_val:
-                    settings = []
-                    for col in range(2, ws.max_column + 1):
-                        val = ws.cell(r, col).value
-                        if val is not None and str(val).strip() != '':
-                            s_str = str(val).strip()
-                            if s_str.isdigit():
-                                settings.append(f"末尾{s_str}")
-                            else:
-                                settings.append(s_str)
-                    wb.close()
-                    if settings:
-                        return ", ".join(settings)
-        wb.close()
-    except Exception as e:
-        print(f"Notice: Could not read specific days setting from Excel: {e}")
-    return "特定末尾日、日ゾロ目の日、月日ゾロ目の日"
-
 
 def prepare_ai_context(excel_path, target_date):
     wb = openpyxl.load_workbook(excel_path, data_only=True)
